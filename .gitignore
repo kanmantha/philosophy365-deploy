@@ -5,3 +5,5 @@
 *.user
 *.suo
 .vs/
+neon-info.json
+render-ids.json
