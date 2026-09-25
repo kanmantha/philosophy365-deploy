@@ -98,7 +98,7 @@ var res = await Api.PostEnvelopeAsync<LoginData>("api/auth/login", new { Email, 
             }
             else
             {
-                Error = res?.Message ?? "Sign in failed. Check API is running on http://localhost:5128.";
+                Error = res?.Message ?? "Sign in failed. The API service may still be starting up (the free tier can take up to a minute on first request). Please try again.";
             }
         }
         catch (Exception ex)
