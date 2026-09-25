@@ -1,11 +1,3 @@
-databases:
-  - name: philosophy365-db
-    plan: free
-    region: oregon
-    databaseName: philosophy365
-    user: app
-    postgresMajorVersion: "16"
-
 services:
   - type: web
     name: philosophy-api
@@ -25,9 +17,7 @@ services:
       - key: Database__Provider
         value: Postgres
       - key: ConnectionStrings__Default
-        fromDatabase:
-          name: philosophy365-db
-          property: connectionString
+        value: Host=ep-purple-glade-ar3zuno6-pooler.c-4.us-west-2.aws.neon.tech;Port=5432;Database=neondb;Username=neondb_owner;Password=npg_tzo0hFPMsAv2;SSL Mode=Require
       - key: Jwt__Key
         generateValue: true
       - key: Jwt__Issuer
@@ -57,7 +47,7 @@ services:
       - key: ASPNETCORE_FORWARDEDHEADERS_ENABLED
         value: "true"
       - key: Api__BaseUrl
-        value: https://API-URL-PLACEHOLDER
+        value: https://philosophy-api.onrender.com
 
   - type: web
     name: philosophy-worker
@@ -75,10 +65,8 @@ services:
       - key: Database__Provider
         value: Postgres
       - key: ConnectionStrings__Default
-        fromDatabase:
-          name: philosophy365-db
-          property: connectionString
+        value: Host=ep-purple-glade-ar3zuno6-pooler.c-4.us-west-2.aws.neon.tech;Port=5432;Database=neondb;Username=neondb_owner;Password=npg_tzo0hFPMsAv2;SSL Mode=Require
       - key: Mock__FfmpegPath
         value: ffmpeg
       - key: Mock__PublicBaseUrl
-        value: https://API-URL-PLACEHOLDER
+        value: https://philosophy-api.onrender.com

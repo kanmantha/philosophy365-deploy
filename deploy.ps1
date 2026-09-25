@@ -29,10 +29,10 @@ function Try-Render($ScriptBlock) {
 
 # 1. Resolve workspace/owner
 $owners = Try-Render { Invoke-Render GET "/owners" }
-$owner = $owners | Where-Object { $_.type -eq "workspace" } | Select-Object -First 1
+$owner = $owners | Where-Object { $_.owner.type -eq "workspace" } | Select-Object -First 1
 if (-not $owner) { $owner = $owners | Select-Object -First 1 }
-$ownerId = $owner.id
-$ownerName = $owner.name
+$ownerId = $owner.owner.id
+$ownerName = $owner.owner.name
 Write-Host "Owner: $ownerName ($ownerId)"
 
 # 2. Database: use the provided Neon connection string (no Render Postgres)
