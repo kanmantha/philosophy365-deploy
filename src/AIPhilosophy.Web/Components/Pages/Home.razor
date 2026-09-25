@@ -1,0 +1,13 @@
+﻿@page "/home"
+@inject NavigationManager Nav
+
+@implements IDisposable
+
+@code {
+    protected override void OnInitialized()
+    {
+        Nav.NavigateTo("/", replace: true);
+    }
+
+    public void Dispose() { }
+}

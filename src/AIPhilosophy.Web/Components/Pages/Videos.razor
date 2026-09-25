@@ -1,0 +1,189 @@
+@page "/videos"
+@inject ApiClient Api
+
+<div class="page-heading">
+    <h1>AI Videos</h1>
+    <p>Generated video jobs. Mock provider creates instant results for the demo; production providers poll until ready.</p>
+</div>
+
+@if (busy)
+{
+    <div class="spinner-border text-info"></div>
+    return;
+}
+
+<div class="d-flex gap-2 mb-3 flex-wrap">
+    <button class="btn btn-outline-light" @onclick="Poll">Poll in-flight jobs</button>
+    <button class="btn btn-outline-light" @onclick="LoadAsync">Refresh</button>
+    @if (!string.IsNullOrEmpty(Message))
+    {
+        <div class="alert @(messageError ? "alert-danger" : "alert-success") mb-0 py-2 px-3 flex-fill">@Message</div>
+    }
+</div>
+
+@if (items.Count == 0)
+{
+    <div class="alert alert-secondary">No videos yet. Generate one from the Dashboard or Scripts page.</div>
+}
+else
+{
+    <table class="table align-middle">
+        <thead>
+            <tr>
+                <th>Day</th>
+                <th>Title</th>
+                <th>Provider</th>
+                <th>Status</th>
+                <th>Preview</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var v in items)
+            {
+                <tr>
+                    <td class="text-info fw-bold">@v.day</td>
+                    <td>@v.title</td>
+                    <td>@v.provider</td>
+                    <td><span class="badge bg-@StatusColor(v.status)">@v.status</span></td>
+                    <td>
+                        @if (!string.IsNullOrEmpty(v.videoUrl))
+                        {
+                            <video controls preload="none" class="video-preview video-preview-sm" src="@v.videoUrl" poster="@v.thumbnailUrl"></video>
+                        }
+                        else if (!string.IsNullOrEmpty(v.thumbnailUrl))
+                        {
+                            <div class="video-thumb-wrap">
+                                <img src="@v.thumbnailUrl" class="video-thumb" />
+                            </div>
+                        }
+                        else
+                        {
+                            <span class="text-muted">—</span>
+                        }
+                    </td>
+                    <td>
+                        @if (v.status == "Ready")
+                        {
+                            <div class="d-flex gap-1 flex-wrap">
+                                <button class="btn btn-sm btn-primary" @onclick="() => OpenQueueModal(v)">Post it</button>
+                            </div>
+                        }
+                        @if (v.status == "Failed")
+                        {
+                            <span class="small text-danger">@Truncate(v.errorMessage, 60)</span>
+                        }
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@if (queueTarget != null)
+{
+    var v = queueTarget;
+    <div class="modal d-block" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content theme-modal">
+                <div class="modal-header">
+                    <h5 class="modal-title">Post Day @v.day video</h5>
+                    <button type="button" class="btn-close" @onclick="() => queueTarget = null"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Platform</label>
+                        <select class="form-select" @bind="queuePlatform">
+                            <option value="YouTubeShorts">YouTube Shorts</option>
+                            <option value="TikTok">TikTok</option>
+                            <option value="InstagramReels">Instagram Reels</option>
+                            <option value="XTwitter">X / Twitter</option>
+                            <option value="LinkedIn">LinkedIn</option>
+                            <option value="FacebookReels">Facebook Reels</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Schedule (optional, UTC)</label>
+                        <input type="datetime-local" class="form-control" value="@queueScheduleDisplay" @onchange="OnScheduleChange" />
+                    </div>
+                    <div class="text-muted small">Need a connected account on the Social page. In demo mode posting is simulated.</div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" @onclick="() => queueTarget = null">Cancel</button>
+                    <button class="btn btn-primary" @onclick="QueuePost">Queue post</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private List<VideoDto> items = new();
+    private bool busy = true;
+    private bool messageError;
+    private string Message = string.Empty;
+    private VideoDto? queueTarget;
+    private string queuePlatform = "YouTubeShorts";
+    private string? queueSchedule;
+    private string? queueScheduleDisplay;
+
+    private void OnScheduleChange(ChangeEventArgs e)
+    {
+        queueSchedule = e.Value?.ToString();
+        queueScheduleDisplay = queueSchedule;
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Api.InitializeAsync();
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        busy = true;
+        var res = await Api.GetAsync<ApiEnvelope<PageResult<VideoDto>>>("api/videos?pageSize=100");
+        items = res?.Data?.items?.ToList() ?? new();
+        busy = false;
+    }
+
+    private async Task Poll()
+    {
+        Message = string.Empty;
+        var res = await Api.PostEnvelopeAsync<object>("api/videos/poll");
+        messageError = res is not { Success: true };
+        Message = res?.Message ?? "Polled.";
+        await LoadAsync();
+    }
+
+    private void OpenQueueModal(VideoDto v)
+    {
+        queueTarget = v;
+        queueSchedule = null;
+        queueScheduleDisplay = null;
+    }
+
+    private async Task QueuePost()
+    {
+        if (queueTarget == null) return;
+        var scheduled = string.IsNullOrWhiteSpace(queueSchedule) ? null : DateTime.Parse(queueSchedule).ToUniversalTime().ToString("o");
+        var res = await Api.PostEnvelopeAsync<object>("api/videos/queue-post",
+            new { videoJobId = queueTarget.id, platform = queuePlatform, scheduledAt = scheduled });
+        messageError = res is not { Success: true };
+        Message = res?.Message ?? "Post queued.";
+        queueTarget = null;
+        await LoadAsync();
+    }
+
+    private static string StatusColor(string status) => status switch
+    {
+        "Ready" => "success",
+        "Posted" => "primary",
+        "Posting" => "info",
+        "Processing" => "info",
+        "Failed" => "danger",
+        _ => "secondary"
+    };
+
+    private static string Truncate(string? s, int n) => string.IsNullOrEmpty(s) ? string.Empty : (s.Length <= n ? s : s[..n] + "...");
+}

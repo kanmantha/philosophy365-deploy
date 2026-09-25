@@ -1,0 +1,84 @@
+databases:
+  - name: philosophy365-db
+    plan: free
+    region: oregon
+    databaseName: philosophy365
+    user: app
+    postgresMajorVersion: "16"
+
+services:
+  - type: web
+    name: philosophy-api
+    plan: free
+    region: oregon
+    runtime: docker
+    dockerfilePath: ./Dockerfile.api
+    healthCheckPath: /swagger/v1/swagger.json
+    autoDeploy: false
+    envVars:
+      - key: PORT
+        value: "8080"
+      - key: ASPNETCORE_ENVIRONMENT
+        value: Production
+      - key: ASPNETCORE_FORWARDEDHEADERS_ENABLED
+        value: "true"
+      - key: Database__Provider
+        value: Postgres
+      - key: ConnectionStrings__Default
+        fromDatabase:
+          name: philosophy365-db
+          property: connectionString
+      - key: Jwt__Key
+        generateValue: true
+      - key: Jwt__Issuer
+        value: AIPhilosophy365
+      - key: Jwt__Audience
+        value: AIPhilosophy365Clients
+      - key: Seed__AdminEmail
+        value: admin@philosophy365.app
+      - key: Seed__AdminPassword
+        value: Admin@12345!
+      - key: Mock__FfmpegPath
+        value: ffmpeg
+
+  - type: web
+    name: philosophy-web
+    plan: free
+    region: oregon
+    runtime: docker
+    dockerfilePath: ./Dockerfile.web
+    healthCheckPath: /
+    autoDeploy: false
+    envVars:
+      - key: PORT
+        value: "8080"
+      - key: ASPNETCORE_ENVIRONMENT
+        value: Production
+      - key: ASPNETCORE_FORWARDEDHEADERS_ENABLED
+        value: "true"
+      - key: Api__BaseUrl
+        value: https://API-URL-PLACEHOLDER
+
+  - type: web
+    name: philosophy-worker
+    plan: free
+    region: oregon
+    runtime: docker
+    dockerfilePath: ./Dockerfile.worker
+    healthCheckPath: /healthz
+    autoDeploy: false
+    envVars:
+      - key: PORT
+        value: "8080"
+      - key: ASPNETCORE_ENVIRONMENT
+        value: Production
+      - key: Database__Provider
+        value: Postgres
+      - key: ConnectionStrings__Default
+        fromDatabase:
+          name: philosophy365-db
+          property: connectionString
+      - key: Mock__FfmpegPath
+        value: ffmpeg
+      - key: Mock__PublicBaseUrl
+        value: https://API-URL-PLACEHOLDER

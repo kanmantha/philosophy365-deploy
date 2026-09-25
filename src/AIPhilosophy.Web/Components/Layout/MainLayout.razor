@@ -1,0 +1,60 @@
+﻿@inherits LayoutComponentBase
+@inject ApiClient Api
+
+<div class="page">
+    <div class="sidebar">
+        <NavMenu />
+    </div>
+
+    <div class="main-shell">
+        <header class="app-header">
+            <div class="app-header-left">
+                <h1 class="page-title">365 Days of Philosophy <small>Studio</small></h1>
+            </div>
+            <div class="app-header-right">
+                <a class="top-link" href="https://github.com/anomalyco" target="_blank">
+                    <span class="bi bi-github-nav-menu" aria-hidden="true"></span> GitHub
+                </a>
+                @if (Api.IsAuthenticated)
+                {
+                    <span class="user-chip">
+                        <span class="avatar">@Initials</span>
+                        <span class="chip-name">@(Api.DisplayName ?? Api.Email)</span>
+                    </span>
+                }
+            </div>
+        </header>
+
+        <main>
+            <article class="content px-4">
+                @Body
+                <footer class="footer-note">
+                    <span class="brand-mark mini">Φ</span>
+                    <span>365 Days of Philosophy — AI-delivered wisdom, every day. Free forever.</span>
+                </footer>
+            </article>
+        </main>
+    </div>
+</div>
+
+<div id="blazor-error-ui" data-nosnippet>
+    An unhandled error has occurred.
+    <a href="." class="reload">Reload</a>
+    <span class="dismiss">X</span>
+</div>
+
+@code {
+    private string Initials
+    {
+        get
+        {
+            if (!string.IsNullOrWhiteSpace(Api.DisplayName))
+            {
+                var parts = Api.DisplayName.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                if (parts.Length >= 2) return (parts[0][..1] + parts[^1][..1]).ToUpperInvariant();
+                return parts.Length == 1 ? parts[0][..1].ToUpperInvariant() : "?";
+            }
+            return Api.Email is { Length: > 0 } ? Api.Email[..1].ToUpperInvariant() : "?";
+        }
+    }
+}

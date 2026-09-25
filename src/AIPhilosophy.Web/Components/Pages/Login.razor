@@ -1,0 +1,144 @@
+﻿@page "/login"
+@inject ApiClient Api
+@inject NavigationManager Nav
+
+<div class="row justify-content-center pt-5">
+    <div class="col-md-5 col-lg-4">
+        <div class="card auth-card shadow">
+            <div class="card-body p-4">
+                <div class="auth-brand">Φ</div>
+                <h1 class="h3 text-center mb-1">365 Days of Philosophy</h1>
+                <p class="text-center text-muted mb-4">Free forever. Generate &amp; auto-post daily AI philosophy videos.</p>
+
+<div class="d-flex mb-3">
+                    <button class="btn btn-toggle flex-fill me-1 @(Mode == "login" ? "active" : "")" @onclick="SetLoginMode">Sign in</button>
+                    <button class="btn btn-toggle flex-fill @(Mode == "register" ? "active" : "")" @onclick="SetRegisterMode">Create free account</button>
+                </div>
+
+                @if (Mode == "login")
+                {
+                    <div class="mb-3">
+                        <label class="form-label">Email</label>
+                        <input type="email" class="form-control" @bind="Email" placeholder="you@example.com" />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Password</label>
+                        <input type="password" class="form-control" @bind="Password" @onkeydown="OnEnter" placeholder="Password" />
+                    </div>
+                    <button class="btn btn-primary w-100" @onclick="DoLogin" disabled="@busy">@(busy ? "Signing in..." : "Sign in")</button>
+                }
+                else
+                {
+                    <div class="mb-3">
+                        <label class="form-label">Display name</label>
+                        <input type="text" class="form-control" @bind="DisplayName" placeholder="Socrates" />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Email</label>
+                        <input type="email" class="form-control" @bind="Email" placeholder="you@example.com" />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Password</label>
+                        <input type="password" class="form-control" @bind="Password" @onkeydown="OnEnter" placeholder="8+ characters" />
+                    </div>
+                    <button class="btn btn-primary w-100" @onclick="Register" disabled="@busy">@(busy ? "Creating..." : "Start free (3 videos included)")</button>
+                }
+
+                @if (!string.IsNullOrEmpty(Error))
+                {
+                    <div class="alert alert-danger mt-3 mb-0">@Error</div>
+                }
+                @if (!string.IsNullOrEmpty(Info))
+                {
+                    <div class="alert alert-success mt-3 mb-0">@Info</div>
+                }
+            </div>
+        </div>
+        <p class="text-center text-muted mt-3 small">Fully free SaaS tier - no credit card, no expiry.</p>
+    </div>
+</div>
+
+@code {
+    private string Mode = "login";
+    private string Email = string.Empty;
+    private string Password = string.Empty;
+    private string DisplayName = string.Empty;
+    private string Error = string.Empty;
+    private string Info = string.Empty;
+    private bool busy;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Api.InitializeAsync();
+        if (Api.IsAuthenticated)
+            Nav.NavigateTo("/");
+    }
+
+    private void SetLoginMode() => Mode = "login";
+    private void SetRegisterMode() => Mode = "register";
+
+    private async Task OnEnter(Microsoft.AspNetCore.Components.Web.KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await (Mode == "login" ? DoLogin() : Register());
+    }
+
+    private async Task DoLogin()
+    {
+        Error = Info = string.Empty;
+        busy = true;
+        try
+        {
+var res = await Api.PostEnvelopeAsync<LoginData>("api/auth/login", new { Email, Password });
+            if (res is { Success: true } && res.Data != null)
+            {
+                await Api.SaveSessionAsync(res.Data.token, res.Data.email, res.Data.displayName, res.Data.tenantId);
+                await Api.RefreshProfileAsync();
+                Info = $"Welcome back, {res.Data.displayName}!";
+                Nav.NavigateTo("/", forceLoad: true);
+            }
+            else
+            {
+                Error = res?.Message ?? "Sign in failed. Check API is running on http://localhost:5128.";
+            }
+        }
+        catch (Exception ex)
+        {
+            Error = $"Connection error: {ex.Message}";
+        }
+        finally
+        {
+            busy = false;
+        }
+    }
+
+    private async Task Register()
+    {
+        Error = Info = string.Empty;
+        busy = true;
+        try
+        {
+            var res = await Api.PostEnvelopeAsync<RegisterData>("api/auth/register", new { Email, Password, DisplayName });
+            if (res is { Success: true })
+            {
+                Info = res.Message ?? "Account created. Signing you in...";
+                await DoLogin();
+            }
+            else
+            {
+                Error = res?.Message ?? "Registration failed.";
+            }
+        }
+        catch (Exception ex)
+        {
+            Error = $"Connection error: {ex.Message}";
+        }
+        finally
+        {
+            busy = false;
+        }
+    }
+
+    private record LoginData(string token, string email, string displayName, Guid tenantId);
+    private record RegisterData(Guid userId, Guid tenantId);
+}
+

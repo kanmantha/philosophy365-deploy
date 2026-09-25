@@ -1,0 +1,165 @@
+@page "/"
+@inject ApiClient Api
+@inject NavigationManager Nav
+
+<div class="page-heading">
+    <h1>Studio Dashboard</h1>
+    <p>Your daily philosophy studio — generate, schedule and auto-post AI videos across your connected platforms.</p>
+</div>
+
+@if (!Api.IsAuthenticated)
+{
+    <div class="alert alert-info">Please <a href="login">sign in</a> to open your free studio.</div>
+    return;
+}
+
+@if (busy)
+{
+    <div class="spinner-border text-info"></div>
+}
+
+<div class="row g-3 mb-4">
+    <div class="col-sm-3">
+        <div class="card stat-card">
+            <div class="card-body">
+                <div class="stat-label">Today is</div>
+                <div class="stat-value">Day @TodayDay</div>
+                <div class="stat-sub">@DateTime.UtcNow.ToString("MMMM d, yyyy")</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-sm-3">
+        <div class="card stat-card">
+            <div class="card-body">
+                <div class="stat-label">Videos generated</div>
+                <div class="stat-value">@(Stats?.generated ?? 0)</div>
+                <div class="stat-sub">of @(Stats?.total ?? 0) total jobs</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-sm-3">
+        <div class="card stat-card">
+            <div class="card-body">
+                <div class="stat-label">Posts published</div>
+                <div class="stat-value">@PostsCount</div>
+                <div class="stat-sub">across connected platforms</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-sm-3">
+        <div class="card stat-card">
+            <div class="card-body">
+                <div class="stat-label">Free credits</div>
+                <div class="stat-value">@Math.Max(0, 3 - (Stats?.total ?? 0))</div>
+                <div class="stat-sub">forever-free SaaS tier</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@if (TodayScript != null)
+{
+    <div class="card mb-4 shadow-sm">
+        <div class="card-body">
+            <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+                <div>
+                    <span class="badge bg-info text-dark mb-1">@TodayScript.category · @TodayScript.philosopher</span>
+                    <h2 class="h4 mb-1">@TodayScript.title</h2>
+                    <div class="text-muted">@TodayScript.subtitle</div>
+                </div>
+                <div class="d-flex gap-2 flex-wrap">
+                    <button class="btn btn-primary" @onclick="GenerateToday" disabled="@generating">
+                        @(generating ? "Generating..." : "Generate today's video")
+                    </button>
+                    <a class="btn btn-outline-light" href="scripts">Browse all 365</a>
+                </div>
+            </div>
+            <hr />
+            <blockquote class="quote">"@TodayScript.body"</blockquote>
+            @if (!string.IsNullOrEmpty(genMessage))
+            {
+                <div class="alert @(genError ? "alert-danger" : "alert-success") mt-2 mb-0">@genMessage</div>
+            }
+        </div>
+    </div>
+}
+
+<div class="card shadow-sm">
+    <div class="card-body">
+        <h2 class="h5 mb-3">How the automation works</h2>
+        <ol class="mb-0">
+            <li><b>Scripts</b> - 365 hand-written philosophy shorts (narration, video prompt, captions, hashtags).</li>
+            <li><b>Generate</b> - submit a script to an AI video provider (Mock in demo; Replicate / Runway / Pika via config).</li>
+            <li><b>Schedule</b> - the worker generates the day's video at your chosen hour and queues platform posts.</li>
+            <li><b>Auto-post</b> - posts publish at your preferred times to connected YouTube Shorts / TikTok / Instagram / X.</li>
+        </ol>
+    </div>
+</div>
+
+@code {
+    private bool busy = true;
+    private bool generating;
+    private bool genError;
+    private string genMessage = string.Empty;
+    private VideoStats? Stats;
+    private ScriptDto? TodayScript;
+    private int PostsCount;
+
+    private int TodayDay
+    {
+        get
+        {
+            var start = new DateTime(DateTime.UtcNow.Year, 1, 1);
+            return (DateTime.UtcNow.Date - start).Days + 1;
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Api.InitializeAsync();
+        if (!Api.IsAuthenticated) { busy = false; return; }
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        busy = true;
+        try
+        {
+            var stats = await Api.GetAsync<ApiEnvelope<VideoStats>>("api/videos/stats");
+            Stats = stats?.Data;
+            var allScripts = new List<ScriptDto>();
+            for (var p = 1; p <= 4; p++)
+            {
+                var page = await Api.GetAsync<ApiEnvelope<PageResult<ScriptDto>>>($"api/scripts?page={p}&pageSize=100");
+                if (page?.Data?.items != null)
+                {
+                    allScripts.AddRange(page.Data.items);
+                    if (page.Data.items.Count < 100) break;
+                }
+                else break;
+            }
+            TodayScript = allScripts.FirstOrDefault(s => s.dayNumber == TodayDay)
+                          ?? allScripts.FirstOrDefault();
+
+            var posts = await Api.GetAsync<ApiEnvelope<PageResult<PostDto>>>("api/posts?pageSize=1");
+            PostsCount = posts?.Data?.total ?? 0;
+        }
+        finally
+        {
+            busy = false;
+        }
+    }
+
+    private async Task GenerateToday()
+    {
+        if (TodayScript == null) return;
+        generating = true;
+        genMessage = string.Empty;
+        var res = await Api.PostEnvelopeAsync<object>("api/videos/generate", new { scriptId = TodayScript.id });
+        genError = res is not { Success: true };
+        genMessage = res?.Message ?? (genError ? "Generation failed." : "Video job submitted.");
+        generating = false;
+        if (!genError) await LoadAsync();
+    }
+}

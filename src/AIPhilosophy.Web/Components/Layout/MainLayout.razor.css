@@ -1,0 +1,184 @@
+.page {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+}
+
+.main-shell {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+}
+
+.sidebar {
+    background-image: linear-gradient(180deg, #0b1220 0%, #0e1830 100%);
+}
+
+.app-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    height: 3.5rem;
+    padding: 0 1.5rem;
+    background: rgba(9, 14, 24, 0.72);
+    backdrop-filter: blur(8px);
+    border-bottom: 1px solid rgba(148, 172, 205, 0.1);
+}
+
+.app-header-left {
+    min-width: 0;
+    overflow: hidden;
+}
+
+.page-title {
+    font-family: 'Inter', sans-serif;
+    font-size: 0.95rem;
+    font-weight: 600;
+    letter-spacing: 0.3px;
+    color: #e6edf6;
+    margin: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.page-title small {
+    color: #8fa1b8;
+    font-weight: 400;
+    margin-left: 0.5rem;
+}
+
+.app-header-right {
+    display: flex;
+    align-items: center;
+    gap: 0.9rem;
+}
+
+.top-link {
+    color: #8fa1b8;
+    font-size: 0.82rem;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    transition: color 0.15s ease;
+}
+
+.app-header .bi {
+    display: inline-block;
+    width: 1rem;
+    height: 1rem;
+    background-size: cover;
+}
+
+.bi-github-nav-menu {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='white' class='bi bi-github' viewBox='0 0 16 16'%3E%3Cpath d='M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.012 8.012 0 0 0 16 8c0-4.42-3.58-8-8-8z'/%3E%3C/svg%3E");
+}
+
+.top-link:hover { color: #e7c989; }
+
+.user-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 0.3rem 0.65rem 0.3rem 0.36rem;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(148, 172, 205, 0.12);
+    border-radius: 50rem;
+}
+
+.avatar {
+    width: 1.7rem;
+    height: 1.7rem;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-family: 'Cormorant Garamond', Georgia, serif;
+    font-weight: 700;
+    font-size: 0.85rem;
+    color: #1c1405;
+    background: linear-gradient(135deg, #f2d9a0, #d9b468);
+}
+
+.chip-name {
+    font-size: 0.82rem;
+    color: #b8c5d6;
+    max-width: 16ch;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.footer-note {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.6rem;
+    margin: 3.5rem auto 0;
+    padding: 1.2rem 1rem 0;
+    border-top: 1px solid rgba(148, 172, 205, 0.08);
+    color: #56677f;
+    font-size: 0.78rem;
+    max-width: 1080px;
+    width: 100%;
+}
+
+.brand-mark.mini {
+    width: 1.4rem;
+    height: 1.4rem;
+    border-radius: 0.4rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-family: 'Cormorant Garamond', Georgia, serif;
+    font-weight: 700;
+    font-size: 0.85rem;
+    color: #1c1405;
+    background: linear-gradient(135deg, #f2d9a0, #d9b468);
+}
+
+@media (max-width: 640.98px) {
+    .app-header {
+        padding: 0 1rem;
+    }
+
+    .chip-name,
+    .top-link span {
+        display: none;
+    }
+}
+
+@media (min-width: 641px) {
+    .page {
+        flex-direction: row;
+    }
+
+    .sidebar {
+        width: 264px;
+        height: 100vh;
+        position: sticky;
+        top: 0;
+        flex: 0 0 auto;
+    }
+
+    .app-header {
+        position: sticky;
+        top: 0;
+        z-index: 10;
+    }
+
+    .app-header, .content {
+        padding-left: 2rem !important;
+        padding-right: 1.5rem !important;
+    }
+}

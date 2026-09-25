@@ -1,0 +1,297 @@
+@page "/create-script"
+@inject ApiClient Api
+@inject NavigationManager Nav
+
+<div class="page-heading">
+    <h1>Custom Story</h1>
+    <p>Write your own story or reflection below. One click turns it into an AI video and posts it to your connected social accounts — now or on your daily automation schedule.</p>
+</div>
+
+@if (busy)
+{
+    <div class="spinner-border text-info"></div>
+}
+else
+{
+    <div class="row">
+        <div class="col-lg-8">
+            <div class="mb-3">
+                <label class="form-label">Day number (auto-assigned)</label>
+                <input class="form-control" value="@NextDay" readonly />
+                <div class="form-text">This script is inserted into your daily pipeline. When its day comes up, the scheduler generates the video and auto-queues posts to your connected platforms.</div>
+            </div>
+            <div class="mb-3">
+                <label class="form-label">Title (optional - auto-generated from the first line)</label>
+                <input class="form-control" @bind="title" placeholder="e.g. The Art of Letting Go" />
+            </div>
+            <div class="row">
+                <div class="col-md-6 mb-3">
+                    <label class="form-label">Category</label>
+                    <select class="form-select" @bind="category">
+                        @foreach (var c in Categories)
+                        {
+                            <option value="@c">@c</option>
+                        }
+                    </select>
+                </div>
+                <div class="col-md-6 mb-3">
+                    <label class="form-label">Philosopher / school (optional)</label>
+                    <input class="form-control" @bind="philosopher" placeholder="e.g. Seneca, Stoicism" />
+                </div>
+            </div>
+            <div class="mb-3">
+                <label class="form-label">Narration script (required - this becomes the video voiceover)</label>
+                <textarea class="form-control" rows="12" @bind="body" placeholder="Write your reflection here...
+
+e.g. We suffer more in imagination than in reality. Seneca wrote that nearly two thousand years ago, and it has not aged a day. Today, name one worry that has never actually happened, and notice how much of your peace it borrowed from tomorrow..."></textarea>
+            </div>
+            <div class="mb-3">
+                <label class="form-label">AI video prompt (optional - auto-generated from the script)</label>
+                <textarea class="form-control" rows="3" @bind="videoPrompt" placeholder="Visual style for the generated video"></textarea>
+            </div>
+            <div class="mb-3">
+                <label class="form-label">Caption / description (optional - auto-generated)</label>
+                <textarea class="form-control" rows="2" @bind="description" placeholder="Caption used on the social post"></textarea>
+            </div>
+            <div class="mb-3">
+                <label class="form-label">Hashtags (optional)</label>
+                <input class="form-control" @bind="hashtags" placeholder="#Philosophy #DailyWisdom #AI" />
+            </div>
+        </div>
+
+        <div class="col-lg-4">
+            <h6 class="mb-2">Post to platforms</h6>
+            <p class="small text-muted">Tick the platforms to queue a post immediately after generation. Dashboards/platforms without a linked account are skipped.</p>
+            @foreach (var p in Platforms)
+            {
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" value="@p" checked="@checkedPlatforms.Contains(p)" @onchange="() => TogglePlatform(p)" />
+                    <label class="form-check-label">@p</label>
+                </div>
+                <div class="form-text small text-muted mt-0 mb-1" style="margin-top:-2px">
+                    @(ConnectedPlatforms.Contains(p) ? "account linked" : "no account linked")
+                </div>
+            }
+
+            <div class="d-grid gap-2 mt-3">
+                <button class="btn btn-primary" @onclick="SaveOnly" disabled="@working">
+                    @(working ? "Working..." : "Save script")
+                </button>
+                <button class="btn btn-info" @onclick="SaveAndGenerate" disabled="@working">
+                    @(working ? "Working..." : "Save & Generate AI video")
+                </button>
+                <button class="btn btn-success" @onclick="SaveGenerateAndPost" disabled="@working">
+                    @(working ? "Working..." : "Save, Generate & Post now")
+                </button>
+            </div>
+            <div class="small text-muted mt-3">
+                Posting daily is automatic: the <a href="schedule">Auto-Schedule</a> rule generates your next script on schedule and queues posts on its posting days/times.
+            </div>
+        </div>
+    </div>
+
+    @if (preview != null)
+    {
+        <div class="video-zone mt-3">
+            <h6 class="mb-2">Video preview</h6>
+            @if (!string.IsNullOrEmpty(preview.videoUrl))
+            {
+                <video controls preload="metadata" class="video-preview" src="@preview.videoUrl" poster="@preview.thumbnailUrl"></video>
+            }
+            else if (!string.IsNullOrEmpty(preview.thumbnailUrl))
+            {
+                <div class="video-thumb-wrap" style="width:120px;height:213px">
+                    <img src="@preview.thumbnailUrl" class="video-thumb" />
+                </div>
+            }
+            <p class="small text-muted mt-2 mb-0">@preview.title — further actions are on the <a href="videos">AI Videos</a> page.</p>
+        </div>
+    }
+}
+
+@if (!string.IsNullOrEmpty(Message))
+{
+    <div class="alert @(messageError ? "alert-danger" : "alert-success") mt-3">@Message</div>
+}
+
+@code {
+    private static readonly string[] Categories =
+    {
+        "Custom Philosophy", "Stoicism", "Ethics", "Eastern Thought", "Enlightenment", "Classical", "Politics", "Psychology"
+    };
+
+    private static readonly string[] Platforms =
+    {
+        "YouTubeShorts", "TikTok", "InstagramReels", "XTwitter", "LinkedIn", "FacebookReels"
+    };
+
+    private bool busy = true;
+    private bool working;
+    private string Message = string.Empty;
+    private bool messageError;
+
+    private int NextDay = 1;
+    private string title = string.Empty;
+    private string category = "Custom Philosophy";
+    private string philosopher = string.Empty;
+    private string body = string.Empty;
+    private string videoPrompt = string.Empty;
+    private string description = string.Empty;
+    private string hashtags = string.Empty;
+    private HashSet<string> checkedPlatforms = new();
+    private HashSet<string> ConnectedPlatforms = new();
+
+    private Guid? lastScriptId;
+    private Guid? lastVideoJobId;
+    private ReadyVideo? preview;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Api.InitializeAsync();
+        var dayRes = await Api.GetAsync<ApiEnvelope<NextDayResult>>("api/scripts/next-day");
+        if (dayRes?.Data != null) NextDay = dayRes.Data.nextDay;
+
+        var accounts = await Api.GetAsync<ApiEnvelope<List<AccountDto>>>("api/social/accounts");
+        if (accounts?.Data != null)
+        {
+            ConnectedPlatforms = accounts.Data.Select(a => a.platform).ToHashSet();
+            checkedPlatforms = new HashSet<string>(ConnectedPlatforms.Where(p => Platforms.Contains(p)));
+        }
+        busy = false;
+    }
+
+    private async Task SaveOnly() => await Save();
+
+    private void TogglePlatform(string p)
+    {
+        if (!checkedPlatforms.Remove(p))
+            checkedPlatforms.Add(p);
+    }
+
+    private async Task SaveAndGenerate()
+    {
+        if (!await Save()) return;
+        await Generate();
+    }
+
+    private async Task SaveGenerateAndPost()
+    {
+        if (!await Save()) return;
+        if (!await Generate()) return;
+        await PostNow();
+    }
+
+    private async Task<bool> Save()
+    {
+        working = true;
+        Message = string.Empty;
+        try
+        {
+            var res = await Api.PostEnvelopeAsync<ScriptDto>("api/scripts/custom", new
+            {
+                title = string.IsNullOrWhiteSpace(title) ? null : title,
+                body,
+                philosopher = string.IsNullOrWhiteSpace(philosopher) ? null : philosopher,
+                category,
+                videoPrompt = string.IsNullOrWhiteSpace(videoPrompt) ? null : videoPrompt,
+                description = string.IsNullOrWhiteSpace(description) ? null : description,
+                hashtags = string.IsNullOrWhiteSpace(hashtags) ? null : hashtags,
+                dayNumber = (int?)null,
+                scheduledPublishDate = (string?)null
+            });
+
+            messageError = res is not { Success: true };
+            if (res?.Data == null)
+            {
+                Message = res?.Message ?? "Failed to save the script.";
+                return false;
+            }
+
+            lastScriptId = res.Data.id;
+            Message = $"Day {res.Data.dayNumber}: \"{res.Data.title}\" saved.";
+            return true;
+        }
+        finally
+        {
+            working = false;
+        }
+    }
+
+    private async Task<bool> Generate()
+    {
+        if (lastScriptId == null) return false;
+        working = true;
+        try
+        {
+            var res = await Api.PostEnvelopeAsync<GenerateResult>("api/videos/generate", new { scriptId = lastScriptId });
+            messageError = res is not { Success: true };
+            Message = res?.Message ?? "Video job submitted.";
+            if (res?.Data == null) return false;
+            lastVideoJobId = res.Data.jobId;
+
+            for (var i = 0; i < 12; i++)
+            {
+                await Api.PostAsync<object>("api/videos/poll");
+                await Task.Delay(1000);
+                var videos = await Api.GetAsync<ApiEnvelope<VideoListResult>>("api/videos?status=Ready&page=1&pageSize=50");
+                var ready = videos?.Data?.items?.FirstOrDefault(v => v.scriptId == lastScriptId && v.status == "Ready");
+                if (ready != null)
+                {
+                    lastVideoJobId = ready.id;
+                    preview = new ReadyVideo(ready.id, ready.title, ready.videoUrl, ready.thumbnailUrl);
+                    Message = $"Video ready for \"{ready.title}\".";
+                    return true;
+                }
+            }
+
+            messageError = true;
+            Message = "Video still processing. Check the AI Videos page in a moment.";
+            return false;
+        }
+        finally
+        {
+            working = false;
+        }
+    }
+
+    private async Task PostNow()
+    {
+        if (lastVideoJobId == null) return;
+        working = true;
+        try
+        {
+            var queued = 0;
+            var skipped = new List<string>();
+            foreach (var p in checkedPlatforms)
+            {
+                if (!ConnectedPlatforms.Contains(p))
+                {
+                    skipped.Add(p);
+                    continue;
+                }
+                var res = await Api.PostEnvelopeAsync<object>("api/videos/queue-post",
+                    new { videoJobId = lastVideoJobId, platform = p, scheduledAt = (string?)null });
+                if (res is { Success: true }) queued++;
+                else if (res != null) skipped.Add($"{p} ({res.Message})");
+            }
+
+            await Api.PostAsync<object>("api/posts/publish-due");
+
+            messageError = false;
+            Message = queued > 0
+                ? $"Queued and published: {queued} post(s). {(skipped.Count > 0 ? "Skipped: " + string.Join(", ", skipped) : string.Empty)}"
+                : "Nothing queued. Link a social account first on the Connect Accounts page, then try again. (Skipped: " + string.Join(", ", skipped) + ")";
+        }
+        finally
+        {
+            working = false;
+        }
+    }
+
+    public record NextDayResult(int nextDay);
+    public record AccountDto(string platform);
+    public record GenerateResult(Guid jobId);
+    public record VideoListResult(List<VideoItem> items);
+    public record VideoItem(Guid id, Guid scriptId, string title, string status, string? videoUrl, string? thumbnailUrl);
+    public record ReadyVideo(Guid id, string title, string? videoUrl, string? thumbnailUrl);
+}

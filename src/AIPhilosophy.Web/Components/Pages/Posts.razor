@@ -1,0 +1,126 @@
+@page "/posts"
+@inject ApiClient Api
+
+<div class="page-heading">
+    <h1>Social Posts</h1>
+    <p>Auto-posting queue. The worker publishes Scheduled/Pending items at their set times on the connected platforms.</p>
+</div>
+
+@if (busy)
+{
+    <div class="spinner-border text-info"></div>
+    return;
+}
+
+<div class="d-flex gap-2 mb-3 flex-wrap">
+    <button class="btn btn-outline-light" @onclick="PublishDue">Publish due now</button>
+    <button class="btn btn-outline-light" @onclick="RetryFailed">Retry failed</button>
+    <button class="btn btn-outline-light" @onclick="LoadAsync">Refresh</button>
+    @if (!string.IsNullOrEmpty(Message))
+    {
+        <div class="alert @(messageError ? "alert-danger" : "alert-success") mb-0 py-2 px-3 flex-fill">@Message</div>
+    }
+</div>
+
+@if (items.Count == 0)
+{
+    <div class="alert alert-secondary">No posts yet. Generate a video and queue it from the Videos page, or let the daily auto-schedule do the work.</div>
+}
+else
+{
+    <div class="table-responsive">
+        <table class="table align-middle">
+            <thead>
+                <tr>
+                    <th>Platform</th>
+                    <th>Day</th>
+                    <th>Title</th>
+                    <th>Status</th>
+                    <th>Scheduled (UTC)</th>
+                    <th>Posted (UTC)</th>
+                    <th>Link</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var p in items)
+                {
+                    <tr>
+                        <td><span class="badge bg-dark">@p.platform</span></td>
+                        <td class="text-info fw-bold">@p.day</td>
+                        <td>@p.title</td>
+                        <td><span class="badge bg-@StatusColor(p.status)">@p.status</span></td>
+                        <td class="small text-muted">@Format(p.scheduledAt)</td>
+                        <td class="small text-muted">@Format(p.postedAt)</td>
+                        <td>
+                            @if (!string.IsNullOrEmpty(p.postUrl) && !IsDemoUrl(p.postUrl))
+                            {
+                                <a href="@p.postUrl" target="_blank" class="small">View</a>
+                            }
+                            else if (IsDemoUrl(p.postUrl) && p.status != "Failed")
+                            {
+                                <span class="small text-muted">Sample link (demo)</span>
+                            }
+                            else if (p.status == "Failed")
+                            {
+                                <span class="small text-danger" title="@p.errorMessage">@Truncate(p.errorMessage, 40)</span>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+
+@code {
+    private List<PostDto> items = new();
+    private bool busy = true;
+    private bool messageError;
+    private string Message = string.Empty;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Api.InitializeAsync();
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        busy = true;
+        var res = await Api.GetAsync<ApiEnvelope<PageResult<PostDto>>>("api/posts?pageSize=100");
+        items = res?.Data?.items?.ToList() ?? new();
+        busy = false;
+    }
+
+    private async Task PublishDue()
+    {
+        var res = await Api.PostEnvelopeAsync<object>("api/posts/publish-due");
+        messageError = res is not { Success: true };
+        Message = res?.Data is not null ? "Due posts published." : "No due posts.";
+        await LoadAsync();
+    }
+
+    private async Task RetryFailed()
+    {
+        var res = await Api.PostEnvelopeAsync<object>("api/posts/retry-failed");
+        messageError = res is not { Success: true };
+        Message = res?.Data is not null ? "Failed posts requeued." : "Nothing to retry.";
+        await LoadAsync();
+    }
+
+    private static string StatusColor(string status) => status switch
+    {
+        "Posted" => "success",
+        "Posting" => "info",
+        "Scheduled" => "info",
+        "Failed" => "danger",
+        "Pending" => "warning",
+        "Skipped" => "secondary",
+        _ => "secondary"
+    };
+
+    private static string Format(DateTime? d) => d?.ToString("MMM d HH:mm") ?? "-";
+    private static string Truncate(string? s, int n) => string.IsNullOrEmpty(s) ? string.Empty : (s.Length <= n ? s : s[..n] + "...");
+    private static bool IsDemoUrl(string? url) => !string.IsNullOrWhiteSpace(url)
+        && url.Contains("demo.example.com", StringComparison.OrdinalIgnoreCase);
+}

@@ -1,0 +1,21 @@
+FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
+WORKDIR /repo
+
+COPY src/AIPhilosophy.Core/AIPhilosophy.Core.csproj src/AIPhilosophy.Core/
+COPY src/AIPhilosophy.Infrastructure/AIPhilosophy.Infrastructure.csproj src/AIPhilosophy.Infrastructure/
+COPY src/AIPhilosophy.Worker/AIPhilosophy.Worker.csproj src/AIPhilosophy.Worker/
+RUN dotnet restore src/AIPhilosophy.Worker/AIPhilosophy.Worker.csproj
+
+COPY src/ src/
+RUN dotnet publish src/AIPhilosophy.Worker/AIPhilosophy.Worker.csproj -c Release -o /app/publish --no-restore
+
+FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
+WORKDIR /app
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ffmpeg fonts-dejavu-core ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+COPY --from=build /app/publish .
+EXPOSE 8080
+ENV ASPNETCORE_ENVIRONMENT=Production \
+    ASPNETCORE_FORWARDEDHEADERS_ENABLED=true
+ENTRYPOINT ["sh", "-c", "dotnet AIPhilosophy.Worker.dll --urls http://0.0.0.0:${PORT:-8080}"]

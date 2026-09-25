@@ -1,0 +1,131 @@
+@page "/schedule"
+@inject ApiClient Api
+
+<div class="page-heading">
+    <h1>Auto-Schedule</h1>
+    <p>The worker runs the pipeline every hour. When UTC hour equals "Generation hour", it builds today's video and queues posts to the target platforms at the posting times.</p>
+</div>
+
+@if (busy)
+{
+    <div class="spinner-border text-info"></div>
+    return;
+}
+
+@foreach (var rule in rules)
+{
+    <div class="card mb-3">
+        <div class="card-body">
+            <div class="d-flex justify-content-between flex-wrap gap-2">
+                <div>
+                    <h2 class="h5 mb-1 d-inline-block">@rule.name</h2>
+                    <span class="badge @(rule.isEnabled ? "bg-success" : "bg-secondary") ms-2">@(rule.isEnabled ? "Enabled" : "Paused")</span>
+                </div>
+                <div class="d-flex gap-2">
+                    <button class="btn btn-sm btn-outline-secondary" @onclick="() => Toggle(rule)">@(rule.isEnabled ? "Pause" : "Enable")</button>
+                    <button class="btn btn-sm btn-outline-danger" @onclick="() => Delete(rule)">Delete</button>
+                </div>
+            </div>
+
+            <div class="row g-2 mt-2">
+                <div class="col-md-3">
+                    <label class="form-label small">Generation hour (UTC)</label>
+                    <input type="number" class="form-control" min="0" max="23" @bind="rule.generationHourUTC" @bind:after="() => SameAs(rule)" />
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label small">Post hour anchor (UTC)</label>
+                    <input type="number" class="form-control" min="0" max="23" @bind="rule.postHourUTC" @bind:after="() => SameAs(rule)" />
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label small">Posting times (e.g. 09:00,12:00,18:00)</label>
+                    <input class="form-control" @bind="rule.postingTimesCsv" @bind:after="() => SameAs(rule)" />
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label small">Days (Mon,Wed,Fri...)</label>
+                    <input class="form-control" @bind="rule.postingDaysCsv" @bind:after="() => SameAs(rule)" />
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label small">Target platforms</label>
+                    <input class="form-control" @bind="rule.targetPlatformsCsv" @bind:after="() => SameAs(rule)" placeholder="YouTubeShorts,TikTok,InstagramReels,XTwitter" />
+                </div>
+                <div class="col-md-6 d-flex align-items-end">
+                    <div class="small text-muted">Cron: <code>@rule.generationCron</code> · TZ: @rule.timeZoneId</div>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+<h2 class="h5">New rule</h2>
+<div class="card">
+    <div class="card-body">
+        <div class="row g-2">
+            <div class="col-md-3"><input class="form-control" @bind="newName" placeholder="Name (e.g. Weekday morning)" /></div>
+            <div class="col-md-2"><input class="form-control" type="number" @bind="newGenerationHour" placeholder="Gen hour (UTC)" /></div>
+            <div class="col-md-2"><input class="form-control" @bind="newTimes" placeholder="Times 09:00,12:00" /></div>
+            <div class="col-md-3"><input class="form-control" @bind="newPlatforms" placeholder="Platforms csv" /></div>
+            <div class="col-md-2"><button class="btn btn-primary w-100" @onclick="Add" disabled="@saving">@(saving ? "Saving..." : "Add rule")</button></div>
+        </div>
+        @if (!string.IsNullOrEmpty(Message))
+        {
+            <div class="alert @(messageError ? "alert-danger" : "alert-success") mt-3 mb-0">@Message</div>
+        }
+    </div>
+</div>
+
+@code {
+    private List<ScheduleRuleDto> rules = new();
+    private bool busy = true;
+    private bool saving;
+    private string newName = "Daily Pipeline";
+    private int newGenerationHour = 6;
+    private string newTimes = "09:00,12:00,18:00";
+    private string newPlatforms = "YouTubeShorts,TikTok,InstagramReels";
+    private string Message = string.Empty;
+    private bool messageError;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Api.InitializeAsync();
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        busy = true;
+        var res = await Api.GetAsync<ApiEnvelope<List<ScheduleRuleDto>>>("api/schedule");
+        rules = res?.Data?.ToList() ?? new();
+        busy = false;
+    }
+
+    private async Task Save(string name, int genHour, int postHour, string days, string times, string platforms, bool enabled)
+    {
+        await Api.PostEnvelopeAsync<object>("api/schedule",
+            new { name, generationHourUTC = genHour, postHourUTC = postHour, postingDaysCsv = days, postingTimesCsv = times, targetPlatformsCsv = platforms, isEnabled = enabled, timeZoneId = "UTC" });
+        await LoadAsync();
+    }
+
+    private Task SameAs(ScheduleRuleDto rule)
+        => Save(rule.name, rule.generationHourUTC, rule.postHourUTC, rule.postingDaysCsv, rule.postingTimesCsv, rule.targetPlatformsCsv, rule.isEnabled);
+
+    private Task Toggle(ScheduleRuleDto rule)
+        => Save(rule.name, rule.generationHourUTC, rule.postHourUTC, rule.postingDaysCsv, rule.postingTimesCsv, rule.targetPlatformsCsv, !rule.isEnabled);
+
+    private async Task Add()
+    {
+        saving = true;
+        Message = string.Empty;
+        var res = await Api.PostEnvelopeAsync<object>("api/schedule",
+            new { name = newName, generationHourUTC = newGenerationHour, postHourUTC = 12, postingDaysCsv = "Mon,Tue,Wed,Thu,Fri,Sat,Sun", postingTimesCsv = newTimes, targetPlatformsCsv = newPlatforms, isEnabled = true, timeZoneId = "UTC" });
+        messageError = res is not { Success: true };
+        Message = res?.Message ?? "Rule added.";
+        saving = false;
+        await LoadAsync();
+    }
+
+    private async Task Delete(ScheduleRuleDto rule)
+    {
+        await Api.DeleteEnvelopeAsync<object>($"api/schedule/{rule.id}");
+        await LoadAsync();
+    }
+}

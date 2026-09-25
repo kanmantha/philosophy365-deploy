@@ -1,0 +1,189 @@
+@page "/social"
+@inject ApiClient Api
+
+<div class="page-heading">
+    <h1>Connect Social Accounts</h1>
+    <p>Link your platform handles. The daily pipeline auto-posts each video to the default account of every platform marked <strong>real</strong>.</p>
+</div>
+
+@if (busy)
+{
+    <div class="spinner-border text-info"></div>
+    return;
+}
+
+@if (platforms.Any(p => p.mode == "real"))
+{
+    <div class="alert alert-info">
+        <strong>Real posting mode.</strong> Linked accounts are published to the actual platform APIs.
+        A platform marked "setup required" needs credentials (<code>Social:*</code> in appsettings) or a real
+        access token on the linked account before the daily pipeline can post to it.
+    </div>
+}
+
+<h2 class="h5 mt-3">Supported platforms</h2>
+
+@if (!string.IsNullOrEmpty(loadError))
+{
+    <div class="alert alert-danger">Could not load social settings: @loadError</div>
+}
+
+<div class="d-flex flex-wrap gap-2 mb-4">
+    @foreach (var p in platforms)
+    {
+        var cls = p.mode == "real" && !p.requiresSetup ? "bg-success"
+            : p.mode == "real" ? "bg-warning text-dark"
+            : "bg-secondary";
+        var note = p.mode == "demo" ? "demo - simulated"
+            : p.requiresSetup ? "real - setup required"
+            : "real";
+        <span class="badge p-2 @cls">@p.name — @note</span>
+    }
+</div>
+
+<h2 class="h5">Linked accounts</h2>
+@if (accounts.Count == 0)
+{
+    <div class="alert alert-secondary">No accounts linked yet. Add one below.</div>
+}
+else
+{
+    <table class="table align-middle">
+        <thead>
+            <tr>
+                <th>Platform</th>
+                <th>Account</th>
+                <th>Handle</th>
+                <th>Default</th>
+                <th>Status</th>
+                <th>Last verified</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var a in accounts)
+            {
+                <tr>
+                    <td><span class="badge bg-dark">@a.platform</span></td>
+                    <td>@a.accountName</td>
+                    <td>@@@a.accountHandle</td>
+                    <td>@(a.isDefaultForPlatform ? "Yes" : "No")</td>
+                    <td><span class="badge bg-@(a.status == "Active" ? "success" : "danger")">@a.status</span></td>
+                    <td class="small text-muted">@a.lastVerifiedAt?.ToString("g")</td>
+                    <td><button class="btn btn-sm btn-outline-danger" @onclick="() => Remove(a.id)">Remove</button></td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+<h2 class="h5 mt-4">Add account</h2>
+<div class="card">
+    <div class="card-body">
+        <div class="row g-2">
+            <div class="col-md-2">
+                <select class="form-select" @bind="newPlatform">
+                    <option value="YouTubeShorts">YouTube Shorts</option>
+                    <option value="TikTok">TikTok</option>
+                    <option value="InstagramReels">Instagram Reels</option>
+                    <option value="XTwitter">X / Twitter</option>
+                    <option value="LinkedIn">LinkedIn</option>
+                    <option value="FacebookReels">Facebook Reels</option>
+                </select>
+            </div>
+            <div class="col-md-3"><input class="form-control" @bind="accountName" placeholder="Account name" /></div>
+            <div class="col-md-3"><input class="form-control" @bind="accountHandle" placeholder="Handle / channel id" /></div>
+            <div class="col-md-2"><input class="form-control" @bind="accessToken" type="password" placeholder="Token (optional)" /></div>
+            <div class="col-md-2 d-flex gap-2 align-items-center">
+                <label class="small text-muted"><input type="checkbox" class="me-1" @bind="isDefault" />Default</label>
+                <button class="btn btn-primary" @onclick="Add">Link</button>
+            </div>
+        </div>
+        @if (!string.IsNullOrEmpty(Message))
+        {
+            <div class="alert @(messageError ? "alert-danger" : "alert-success") mt-3 mb-0">@Message</div>
+        }
+    </div>
+</div>
+
+@code {
+    private List<PlatformDto> platforms = new();
+    private List<SocialAccountDto> accounts = new();
+    private bool busy = true;
+    private string newPlatform = "YouTubeShorts";
+    private string accountName = string.Empty;
+    private string accountHandle = string.Empty;
+    private string accessToken = string.Empty;
+    private bool isDefault = true;
+    private string Message = string.Empty;
+    private bool messageError;
+    private string loadError = string.Empty;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            await Api.InitializeAsync();
+        }
+        catch (Exception ex)
+        {
+            loadError = ex.Message;
+        }
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        busy = true;
+        loadError = string.Empty;
+        try
+        {
+            var p = await Api.GetAsync<ApiEnvelope<List<PlatformDto>>>("api/social/platforms");
+            platforms = p?.Data ?? new();
+            var a = await Api.GetAsync<ApiEnvelope<List<SocialAccountDto>>>("api/social/accounts");
+            accounts = a?.Data ?? new();
+        }
+        catch (Exception ex)
+        {
+            loadError = ex.Message;
+        }
+        finally
+        {
+            busy = false;
+        }
+    }
+
+    private async Task Add()
+    {
+        Message = string.Empty;
+        try
+        {
+            var res = await Api.PostEnvelopeAsync<object>("api/social/accounts",
+                new { platform = newPlatform, accountName, accountHandle, accessToken = string.IsNullOrEmpty(accessToken) ? null : accessToken, refreshToken = (string?)null, isDefaultForPlatform = isDefault });
+            messageError = res is not { Success: true };
+            Message = res?.Message ?? "Added.";
+            accountName = accountHandle = accessToken = string.Empty;
+        }
+        catch (Exception ex)
+        {
+            messageError = true;
+            Message = ex.Message;
+        }
+        await LoadAsync();
+    }
+
+    private async Task Remove(Guid id)
+    {
+        Message = string.Empty;
+        try
+        {
+            await Api.DeleteEnvelopeAsync<object>($"api/social/accounts/{id}");
+        }
+        catch (Exception ex)
+        {
+            messageError = true;
+            Message = ex.Message;
+        }
+        await LoadAsync();
+    }
+}

@@ -1,0 +1,12 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/AIPhilosophy.Api/AIPhilosophy.Api.csproj" />
+    <Project Path="src/AIPhilosophy.Core/AIPhilosophy.Core.csproj" />
+    <Project Path="src/AIPhilosophy.Infrastructure/AIPhilosophy.Infrastructure.csproj" />
+    <Project Path="src/AIPhilosophy.Web/AIPhilosophy.Web.csproj" />
+    <Project Path="src/AIPhilosophy.Worker/AIPhilosophy.Worker.csproj" />
+  </Folder>
+<Folder Name="/tests/">
+    <Project Path="tests/AIPhilosophy.Tests/AIPhilosophy.Tests.csproj" />
+  </Folder>
+</Solution>

@@ -1,0 +1,402 @@
+@page "/users"
+@inject ApiClient Api
+
+<div class="page-heading">
+    <h1>User Management</h1>
+    <p>Manage registered accounts: add users, edit names, promote to admin, disable access, reset passwords, or delete accounts.</p>
+</div>
+
+@if (!Api.IsAdmin)
+{
+    <div class="alert alert-secondary">This area is restricted to administrators.</div>
+    return;
+}
+
+@if (busy)
+{
+    <div class="spinner-border text-info"></div>
+}
+else
+{
+    <div class="d-flex gap-2 mb-3">
+        <button class="btn btn-primary" @onclick="OpenAdd">Add user</button>
+        <button class="btn btn-outline-light" @onclick="LoadAsync">Refresh</button>
+    </div>
+
+    <div class="table-responsive">
+        <table class="table table-sm align-middle">
+            <thead>
+                <tr>
+                    <th>User</th>
+                    <th>Workspace</th>
+                    <th>Role</th>
+                    <th>Status</th>
+                    <th>Credits used</th>
+                    <th>Joined</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var u in users)
+                {
+                    <tr>
+                        <td>
+                            <span class="fw-semibold">@u.displayName</span>
+                            <div class="small text-muted">@u.email</div>
+                        </td>
+                        <td>
+                            @u.tenantName
+                            @if (u.bypassUsageLimits)
+                            {
+                                <span class="badge bg-success ms-1">Unlimited</span>
+                            }
+                        </td>
+                        <td>
+                            @foreach (var r in u.roles)
+                            {
+                                <span class="badge @(r == "Admin" ? "bg-info text-dark" : "bg-secondary") me-1">@r</span>
+                            }
+                        </td>
+                        <td>
+                            @if (u.isLocked)
+                            {
+                                <span class="badge bg-danger">Disabled</span>
+                            }
+                            else
+                            {
+                                <span class="badge bg-success">Active</span>
+                            }
+                        </td>
+                        <td class="small text-muted">@u.videosUsed / @u.videoLimit</td>
+                        <td class="small text-muted">@u.createdAt.ToString("MMM d, yyyy")</td>
+                        <td>
+                            <div class="d-flex gap-1 flex-wrap">
+                                <button class="btn btn-sm @(u.IsAdmin ? "btn-outline-light" : "btn-primary")"
+                                        disabled="@busyAction"
+                                        @onclick="() => ToggleRole(u)">
+                                    @(u.IsAdmin ? "Demote" : "Promote")
+                                </button>
+                                @if (!u.IsProtected)
+                                {
+                                    <button class="btn btn-sm @(u.isLocked ? "btn-info" : "btn-outline-danger")"
+                                            disabled="@busyAction"
+                                            @onclick="() => ToggleLock(u)">
+                                        @(u.isLocked ? "Enable" : "Disable")
+                                    </button>
+                                    <button class="btn btn-sm btn-secondary" disabled="@busyAction"
+                                            @onclick="() => OpenEdit(u)">
+                                        Edit
+                                    </button>
+                                    <button class="btn btn-sm btn-outline-light" disabled="@busyAction"
+                                            @onclick="() => OpenReset(u)">
+                                        Reset password
+                                    </button>
+                                    <button class="btn btn-sm btn-outline-danger" disabled="@busyAction || IsSelf(u)"
+                                            title="@(IsSelf(u) ? "You cannot delete your own account" : "")"
+                                            @onclick="() => OpenDelete(u)">
+                                        Delete
+                                    </button>
+                                }
+                            </div>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+
+@if (showAdd)
+{
+    <div class="modal d-block" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content theme-modal">
+                <div class="modal-header">
+                    <h5 class="modal-title">Add user</h5>
+                    <button type="button" class="btn-close" @onclick="() => showAdd = false"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Email</label>
+                        <input type="email" class="form-control" @bind="addEmail" placeholder="user@example.com" />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Display name</label>
+                        <input class="form-control" @bind="addDisplayName" placeholder="Jane Doe" />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Password</label>
+                        <input type="password" class="form-control" @bind="addPassword" placeholder="8+ characters" />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Role</label>
+                        <select class="form-select" @bind="addRole">
+                            <option value="User">User</option>
+                            <option value="Admin">Admin</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Workspace name (optional)</label>
+                        <input class="form-control" @bind="addTenantName" placeholder="Defaults to 'Workspace - email'" />
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" @onclick="() => showAdd = false">Cancel</button>
+                    <button class="btn btn-primary" @onclick="CreateUser" disabled="@busyAction">
+                        @(busyAction ? "Creating..." : "Add user")
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@if (editTarget != null)
+{
+    <div class="modal d-block" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content theme-modal">
+                <div class="modal-header">
+                    <h5 class="modal-title">Edit user - @editTarget.email</h5>
+                    <button type="button" class="btn-close" @onclick="() => editTarget = null"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Display name</label>
+                        <input class="form-control" @bind="editName" />
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" @onclick="() => editTarget = null">Cancel</button>
+                    <button class="btn btn-primary" @onclick="SaveEdit" disabled="@busyAction">
+                        @(busyAction ? "Saving..." : "Save")
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@if (deleteTarget != null)
+{
+    <div class="modal d-block" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content theme-modal">
+                <div class="modal-header">
+                    <h5 class="modal-title">Delete user</h5>
+                    <button type="button" class="btn-close" @onclick="() => deleteTarget = null"></button>
+                </div>
+                <div class="modal-body">
+                    Delete <strong>@deleteTarget.email</strong>? Their workspace data (scripts, videos, posts) remains, but the account can no longer sign in.
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" @onclick="() => deleteTarget = null">Cancel</button>
+                    <button class="btn btn-danger" @onclick="ConfirmDelete" disabled="@busyAction">
+                        @(busyAction ? "Deleting..." : "Delete user")
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@if (resetTarget != null)
+{
+    <div class="modal d-block" tabindex="-1" @onclick:stopPropagation>
+        <div class="modal-dialog">
+            <div class="modal-content theme-modal">
+                <div class="modal-header">
+                    <h5 class="modal-title">Reset password - @resetTarget.email</h5>
+                    <button type="button" class="btn-close" @onclick="() => resetTarget = null"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">New password</label>
+                        <input type="password" class="form-control" @bind="newPassword" placeholder="8+ characters" />
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" @onclick="() => resetTarget = null">Cancel</button>
+                    <button class="btn btn-primary" @onclick="DoReset" disabled="@busyAction">
+                        @(busyAction ? "Resetting..." : "Set new password")
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@if (!string.IsNullOrEmpty(Message))
+{
+    <div class="alert @(messageError ? "alert-danger" : "alert-success") mt-3">@Message</div>
+}
+
+@code {
+    private bool busy = true;
+    private bool busyAction;
+    private string Message = string.Empty;
+    private bool messageError;
+    private List<UserRow> users = new();
+    private UserRow? resetTarget;
+    private string newPassword = string.Empty;
+
+    private bool showAdd;
+    private string addEmail = string.Empty;
+    private string addDisplayName = string.Empty;
+    private string addPassword = string.Empty;
+    private string addRole = "User";
+    private string addTenantName = string.Empty;
+
+    private UserRow? editTarget;
+    private string editName = string.Empty;
+
+    private UserRow? deleteTarget;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Api.InitializeAsync();
+        if (Api.IsAuthenticated)
+            await Api.RefreshProfileAsync();
+        if (Api.IsAdmin)
+            await LoadAsync();
+        else
+            busy = false;
+    }
+
+    private bool IsSelf(UserRow u) => string.Equals(u.email, Api.Email, StringComparison.OrdinalIgnoreCase);
+
+    private async Task LoadAsync()
+    {
+        busy = true;
+        var res = await Api.GetAsync<ApiEnvelope<List<UserRow>>>("api/admin/users");
+        users = res?.Data ?? new List<UserRow>();
+        busy = false;
+    }
+
+    private void OpenAdd()
+    {
+        addEmail = addDisplayName = addPassword = addTenantName = string.Empty;
+        addRole = "User";
+        showAdd = true;
+    }
+
+    private async Task CreateUser()
+    {
+        await RunAction(async () =>
+        {
+            var res = await Api.PostEnvelopeAsync<object>("api/admin/users",
+                new { email = addEmail.Trim(), password = addPassword, displayName = string.IsNullOrWhiteSpace(addDisplayName) ? null : addDisplayName.Trim(), role = addRole, tenantName = string.IsNullOrWhiteSpace(addTenantName) ? null : addTenantName.Trim() });
+            SetResult(res, res is { Success: true } ? res.Message : null);
+        });
+        if (!messageError) showAdd = false;
+        await LoadAsync();
+    }
+
+    private void OpenEdit(UserRow u)
+    {
+        editTarget = u;
+        editName = u.displayName ?? string.Empty;
+    }
+
+    private async Task SaveEdit()
+    {
+        var target = editTarget;
+        if (target == null) return;
+        await RunAction(async () =>
+        {
+            var res = await Api.PutEnvelopeAsync<object>($"api/admin/users/{target.id}", new { displayName = editName.Trim() });
+            SetResult(res, $"Name updated for {target.email}.");
+        });
+        if (!messageError) editTarget = null;
+        await LoadAsync();
+    }
+
+    private void OpenDelete(UserRow u) => deleteTarget = u;
+
+    private async Task ConfirmDelete()
+    {
+        var target = deleteTarget;
+        if (target == null) return;
+        await RunAction(async () =>
+        {
+            var res = await Api.DeleteEnvelopeAsync<object>($"api/admin/users/{target.id}");
+            SetResult(res);
+        });
+        if (!messageError) deleteTarget = null;
+        await LoadAsync();
+    }
+
+    private async Task ToggleRole(UserRow u)
+    {
+        await RunAction(async () =>
+        {
+            var res = await Api.PostEnvelopeAsync<object>($"api/admin/users/{u.id}/role",
+                new { role = u.IsAdmin ? "User" : "Admin" });
+            SetResult(res);
+        });
+        await LoadAsync();
+    }
+
+    private async Task ToggleLock(UserRow u)
+    {
+        await RunAction(async () =>
+        {
+            var res = await Api.PostEnvelopeAsync<object>($"api/admin/users/{u.id}/{(u.isLocked ? "enable" : "disable")}");
+            SetResult(res);
+        });
+        await LoadAsync();
+    }
+
+    private void OpenReset(UserRow u)
+    {
+        resetTarget = u;
+        newPassword = string.Empty;
+    }
+
+    private async Task DoReset()
+    {
+        var target = resetTarget;
+        if (target == null) return;
+        await RunAction(async () =>
+        {
+            var res = await Api.PostEnvelopeAsync<object>($"api/admin/users/{target.id}/reset-password",
+                new { newPassword });
+            SetResult(res, $"Password updated for {target.email}.");
+        });
+        if (!messageError) resetTarget = null;
+        await LoadAsync();
+    }
+
+    private async Task RunAction(Func<Task> action)
+    {
+        busyAction = true;
+        Message = string.Empty;
+        try { await action(); }
+        finally { busyAction = false; }
+    }
+
+    private void SetResult(ApiEnvelope<object>? res, string? ok = null)
+    {
+        messageError = res is not { Success: true };
+        Message = res?.Message ?? (messageError ? "Action failed." : ok ?? "Done.");
+    }
+
+    public class UserRow
+    {
+        public Guid id { get; set; }
+        public string? email { get; set; }
+        public string? displayName { get; set; }
+        public Guid tenantId { get; set; }
+        public DateTime createdAt { get; set; }
+        public List<string> roles { get; set; } = new();
+        public bool isLocked { get; set; }
+        public string? tenantName { get; set; }
+        public bool bypassUsageLimits { get; set; }
+        public int videoLimit { get; set; }
+        public int videosUsed { get; set; }
+        public bool tenantActive { get; set; }
+
+        public bool IsAdmin => roles.Contains("Admin");
+        public bool IsProtected => email?.Equals("admin@philosophy365.app", StringComparison.OrdinalIgnoreCase) == true;
+    }
+}

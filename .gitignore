@@ -1,0 +1,7 @@
+**/bin/
+**/obj/
+**/logs/
+**/wwwroot/videos/
+*.user
+*.suo
+.vs/

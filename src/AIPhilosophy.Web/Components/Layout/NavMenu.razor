@@ -1,0 +1,110 @@
+@inject NavigationManager Nav
+@inject ApiClient Api
+
+@{
+    var isAuth = Api.IsAuthenticated;
+    var isAdmin = Api.IsAdmin;
+    var navReady = ready;
+}
+
+<input type="checkbox" title="Navigation menu" class="navbar-toggler" />
+
+<div class="nav-scrollable" onclick="document.querySelector('.navbar-toggler').click()">
+    <div class="sidebar-brand">
+        <div class="brand-mark">Φ</div>
+        <div class="brand-text">
+            <div class="brand-name">365 Days of Philosophy</div>
+            <div class="brand-tagline">The Daily AI Studio</div>
+        </div>
+    </div>
+
+    <nav class="nav flex-column sidebar-nav">
+        @if (isAuth && navReady)
+        {
+            <div class="nav-section-label">Studio</div>
+            <div class="nav-item">
+                <NavLink class="nav-link" href="" Match="NavLinkMatch.All">
+                    <span class="bi bi-house-door-fill-nav-menu" aria-hidden="true"></span> Dashboard
+                </NavLink>
+            </div>
+            <div class="nav-item">
+                <NavLink class="nav-link" href="scripts">
+                    <span class="bi bi-journal-text-nav-menu" aria-hidden="true"></span> Daily Scripts
+                </NavLink>
+            </div>
+            <div class="nav-item">
+                <NavLink class="nav-link" href="create-script">
+                    <span class="bi bi-pencil-square-nav-menu" aria-hidden="true"></span> Custom Story
+                </NavLink>
+            </div>
+            <div class="nav-item">
+                <NavLink class="nav-link" href="videos">
+                    <span class="bi bi-film-nav-menu" aria-hidden="true"></span> AI Videos
+                </NavLink>
+            </div>
+            <div class="nav-item">
+                <NavLink class="nav-link" href="posts">
+                    <span class="bi bi-send-nav-menu" aria-hidden="true"></span> Social Posts
+                </NavLink>
+            </div>
+
+            <div class="nav-section-label">Automation</div>
+            <div class="nav-item">
+                <NavLink class="nav-link" href="social">
+                    <span class="bi bi-link-45deg-nav-menu" aria-hidden="true"></span> Connect Accounts
+                </NavLink>
+            </div>
+            <div class="nav-item">
+                <NavLink class="nav-link" href="schedule">
+                    <span class="bi bi-calendar3-nav-menu" aria-hidden="true"></span> Auto-Schedule
+                </NavLink>
+            </div>
+
+            @if (isAdmin)
+            {
+                <div class="nav-section-label">Administration</div>
+                <div class="nav-item">
+                    <NavLink class="nav-link" href="users">
+                        <span class="bi bi-people-nav-menu" aria-hidden="true"></span> User Management
+                    </NavLink>
+                </div>
+            }
+        }
+        else
+        {
+            <div class="nav-item">
+                <NavLink class="nav-link" href="login">
+                    <span class="bi bi-person-circle-nav-menu" aria-hidden="true"></span> Sign in
+                </NavLink>
+            </div>
+        }
+    </nav>
+
+    @if (isAuth && navReady)
+    {
+        <div class="sidebar-footer">
+            <button class="signout-link" @onclick="Logout">
+                <span class="bi bi-box-arrow-right-nav-menu" aria-hidden="true"></span> Sign out
+            </button>
+        </div>
+    }
+</div>
+
+@code {
+    private bool ready;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Api.InitializeAsync();
+        if (Api.IsAuthenticated)
+            await Api.RefreshProfileAsync();
+        ready = true;
+    }
+
+    private async Task Logout()
+    {
+        await Api.ClearSessionAsync();
+        ready = false;
+        Nav.NavigateTo("/login", forceLoad: true);
+    }
+}

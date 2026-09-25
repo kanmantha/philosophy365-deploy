@@ -1,0 +1,230 @@
+@page "/scripts"
+@inject ApiClient Api
+
+<div class="page-heading">
+    <h1>365 Daily Scripts</h1>
+    <p>Choose a day. Review the narration, video prompt, caption and hashtags. Generate the AI video with one click.</p>
+</div>
+
+@if (busy)
+{
+    <div class="spinner-border text-info"></div>
+}
+else
+{
+    <div class="row g-2 mb-3">
+        <div class="col-md-3">
+            <input type="text" class="form-control" placeholder="Search title/keyword..." @bind="filter" @bind:event="oninput" />
+        </div>
+        <div class="col-md-2">
+            <select class="form-select" @bind="statusFilter" @bind:event="onchange">
+                <option value="">All statuses</option>
+                <option value="Ready">Ready</option>
+                <option value="Generated">Generated</option>
+                <option value="Scheduled">Scheduled</option>
+                <option value="Published">Published</option>
+                <option value="Failed">Failed</option>
+            </select>
+        </div>
+        <div class="col-md-2">
+            <button class="btn btn-outline-light w-100" @onclick="LoadAsync">Refresh</button>
+        </div>
+    </div>
+
+    <div class="table-responsive">
+        <table class="table table-sm align-middle">
+            <thead>
+                <tr>
+                    <th>Day</th>
+                    <th>Title</th>
+                    <th>Philosopher</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var s in Filtered)
+                {
+                    <tr>
+                        <td class="text-info fw-bold">@s.dayNumber</td>
+                        <td>@s.title<div class="small text-muted">@s.subtitle</div></td>
+                        <td>@s.philosopher</td>
+                        <td><span class="badge bg-@StatusColor(s.status)">@s.status</span></td>
+                        <td>
+                            <div class="d-flex gap-1">
+                                <button class="btn btn-sm btn-outline-light" @onclick="() => Selected = s">View</button>
+                                <button class="btn btn-sm btn-primary" @onclick="() => Generate(s)" disabled="@generating">
+                                    Generate
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+
+@if (Selected != null)
+{
+    var s = Selected;
+    <div class="modal d-block" tabindex="-1" @onclick:stopPropagation>
+        <div class="modal-dialog modal-lg modal-dialog-scrollable">
+            <div class="modal-content theme-modal">
+                <div class="modal-header">
+                    <h5 class="modal-title">Day @s.dayNumber - @s.title</h5>
+                    <button type="button" class="btn-close" @onclick="() => Selected = null"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <span class="badge bg-info text-dark me-1">@s.category</span>
+                        <span class="badge bg-secondary">@s.philosopher</span>
+                        <button class="btn btn-sm btn-outline-light ms-2 float-end" @onclick="() => Edit(s)">Edit script</button>
+                    </div>
+                    <h6>Narration script (approx @s.estimatedDurationSeconds sec)</h6>
+                    <div class="script-body mb-3">@s.body</div>
+                    <h6>AI video prompt</h6>
+                    <div class="prompt-box mb-3">@s.videoPrompt</div>
+                    <h6>Description / caption</h6>
+                    <div class="script-body mb-3">@s.description</div>
+                    <h6>Hashtags</h6>
+                    <div class="hashtags mb-3">@s.hashtags</div>
+                    @if (!string.IsNullOrEmpty(sVoice))
+                    {
+                        <div class="small text-muted">Voice: @sVoice</div>
+                    }
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" @onclick="() => Selected = null">Close</button>
+                    <button class="btn btn-primary" @onclick="() => Generate(Selected)">Generate AI video</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@if (editTarget != null)
+{
+    <div class="modal d-block" tabindex="-1" @onclick:stopPropagation>
+        <div class="modal-dialog modal-lg modal-dialog-scrollable">
+            <div class="modal-content theme-modal">
+                <div class="modal-header">
+                    <h5 class="modal-title">Edit Day @editTarget.dayNumber</h5>
+                    <button type="button" class="btn-close" @onclick="() => editTarget = null"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-2"><input class="form-control" @bind="editTitle" placeholder="Title" /></div>
+                    <div class="mb-2"><textarea class="form-control" rows="6" @bind="editBody" placeholder="Narration script"></textarea></div>
+                    <div class="mb-2"><textarea class="form-control" rows="3" @bind="editPrompt" placeholder="AI video prompt"></textarea></div>
+                    <div class="mb-2"><textarea class="form-control" rows="2" @bind="editDescription" placeholder="Description / caption"></textarea></div>
+                    <div class="mb-2"><input class="form-control" @bind="editHashtags" placeholder="Hashtags" /></div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" @onclick="() => editTarget = null">Cancel</button>
+                    <button class="btn btn-success" @onclick="SaveEdit" disabled="@saving">
+                        @(saving ? "Saving..." : "Save changes")
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@if (!string.IsNullOrEmpty(Message))
+{
+    <div class="alert @(messageError ? "alert-danger" : "alert-success") mt-3">@Message</div>
+}
+
+@code {
+    private List<ScriptDto> scripts = new();
+    private List<ScriptDto> all = new();
+    private bool busy = true;
+    private bool generating;
+    private string filter = string.Empty;
+    private string statusFilter = string.Empty;
+    private ScriptDto? Selected;
+    private string? sVoice = "Warm, Calm, Reflective";
+    private ScriptDto? editTarget;
+    private string editTitle = string.Empty;
+    private string editBody = string.Empty;
+    private string editPrompt = string.Empty;
+    private string editDescription = string.Empty;
+    private string editHashtags = string.Empty;
+    private bool saving;
+    private string Message = string.Empty;
+    private bool messageError;
+
+    private IEnumerable<ScriptDto> Filtered => all
+        .Where(s => string.IsNullOrEmpty(statusFilter) || s.status == statusFilter)
+        .Where(s => string.IsNullOrEmpty(filter)
+                    || s.title.Contains(filter, StringComparison.OrdinalIgnoreCase)
+                    || s.body.Contains(filter, StringComparison.OrdinalIgnoreCase)
+                    || s.philosopher.Contains(filter, StringComparison.OrdinalIgnoreCase));
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Api.InitializeAsync();
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        busy = true;
+        all = new List<ScriptDto>();
+        for (var p = 1; p <= 4; p++)
+        {
+            var page = await Api.GetAsync<ApiEnvelope<PageResult<ScriptDto>>>($"api/scripts?page={p}&pageSize=100");
+            if (page?.Data?.items != null)
+            {
+                all.AddRange(page.Data.items);
+                if (page.Data.items.Count < 100) break;
+            }
+            else break;
+        }
+        busy = false;
+    }
+
+    private async Task Generate(ScriptDto s)
+    {
+        generating = true;
+        Message = string.Empty;
+        var res = await Api.PostEnvelopeAsync<object>("api/videos/generate", new { scriptId = s.id });
+        messageError = res is not { Success: true };
+        Message = res?.Message ?? (messageError ? "Generation failed." : $"Video job submitted for Day {s.dayNumber}.");
+        generating = false;
+        await LoadAsync();
+    }
+
+    private void Edit(ScriptDto s)
+    {
+        editTarget = s;
+        editTitle = s.title;
+        editBody = s.body;
+        editPrompt = s.videoPrompt;
+        editDescription = s.description;
+        editHashtags = s.hashtags;
+    }
+
+    private async Task SaveEdit()
+    {
+        saving = true;
+        var target = editTarget;
+        if (target == null) { saving = false; return; }
+        var res = await Api.PutEnvelopeAsync<ScriptDto>($"api/scripts/{target.id}",
+            new { target.dayNumber, title = editTitle, subtitle = "" as string, category = "Philosophy", philosopher = "Varies", body = editBody, videoPrompt = editPrompt, description = editDescription, hashtags = editHashtags, estimatedDurationSeconds = 45, scheduledPublishDate = (string?)null });
+        messageError = res is not { Success: true };
+        Message = res?.Message ?? "Saved.";
+        saving = false;
+        editTarget = null;
+        await LoadAsync();
+    }
+
+    private static string StatusColor(string status) => status switch
+    {
+        "Published" => "success",
+        "Generated" => "primary",
+        "Scheduled" => "info",
+        "Failed" => "danger",
+        _ => "secondary"
+    };
+}
