@@ -25,7 +25,13 @@
                         <label class="form-label">Password</label>
                         <input type="password" class="form-control" @bind="Password" @onkeydown="OnEnter" placeholder="Password" />
                     </div>
-                    <button class="btn btn-primary w-100" @onclick="DoLogin" disabled="@busy">@(busy ? "Signing in..." : "Sign in")</button>
+<button class="btn btn-primary w-100" @onclick="DoLogin" disabled="@busy">@(busy ? "Signing in..." : "Sign in")</button>
+
+                    <div class="alert alert-dark demo-box mt-4 mb-0">
+                        <div class="small fw-semibold mb-1">Demo account</div>
+                        <div class="small text-break mb-2">admin@philosophy365.app<br />Password: Admin@12345!</div>
+                        <button type="button" class="btn btn-sm btn-outline-secondary w-100" @onclick="FillDemo">Use demo credentials</button>
+                    </div>
                 }
                 else
                 {
@@ -76,6 +82,14 @@
 
     private void SetLoginMode() => Mode = "login";
     private void SetRegisterMode() => Mode = "register";
+
+    private void FillDemo()
+    {
+        Mode = "login";
+        Email = "admin@philosophy365.app";
+        Password = "Admin@12345!";
+        Error = Info = string.Empty;
+    }
 
     private async Task OnEnter(Microsoft.AspNetCore.Components.Web.KeyboardEventArgs e)
     {
