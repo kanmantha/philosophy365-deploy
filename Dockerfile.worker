@@ -1,4 +1,4 @@
-FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
+FROM mcr.microsoft.com/dotnet/sdk:10.0.302 AS build
 WORKDIR /repo
 
 COPY src/AIPhilosophy.Core/AIPhilosophy.Core.csproj src/AIPhilosophy.Core/
@@ -9,7 +9,7 @@ RUN dotnet restore src/AIPhilosophy.Worker/AIPhilosophy.Worker.csproj
 COPY src/ src/
 RUN dotnet publish src/AIPhilosophy.Worker/AIPhilosophy.Worker.csproj -c Release -o /app/publish --no-restore
 
-FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
+FROM mcr.microsoft.com/dotnet/aspnet:10.0.10 AS runtime
 WORKDIR /app
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ffmpeg fonts-dejavu-core ca-certificates \
