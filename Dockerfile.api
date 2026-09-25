@@ -1,13 +1,10 @@
 FROM mcr.microsoft.com/dotnet/sdk:10.0.302 AS build
 WORKDIR /repo
 
-COPY src/AIPhilosophy.Core/AIPhilosophy.Core.csproj src/AIPhilosophy.Core/
-COPY src/AIPhilosophy.Infrastructure/AIPhilosophy.Infrastructure.csproj src/AIPhilosophy.Infrastructure/
-COPY src/AIPhilosophy.Api/AIPhilosophy.Api.csproj src/AIPhilosophy.Api/
+COPY src/ src/
 RUN dotnet restore src/AIPhilosophy.Api/AIPhilosophy.Api.csproj
 
-COPY src/ src/
-RUN dotnet publish src/AIPhilosophy.Api/AIPhilosophy.Api.csproj -c Release -o /app/publish --no-restore
+RUN dotnet publish src/AIPhilosophy.Api/AIPhilosophy.Api.csproj -c Release -o /app/publish
 
 FROM mcr.microsoft.com/dotnet/aspnet:10.0.10 AS runtime
 WORKDIR /app
