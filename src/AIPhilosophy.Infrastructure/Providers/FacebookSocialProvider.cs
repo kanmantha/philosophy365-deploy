@@ -28,21 +28,29 @@ public class FacebookSocialProvider : RealSocialProviderBase, ISocialProvider
         var userId = meR?.TryGetProperty("id", out var uid) == true ? uid.GetString() : null;
 
         string? pageId = Get("PageId");
+        string? pageName = null;
         try
         {
             var pages = await BearerGetAsync($"https://graph.facebook.com/{_ver}/me/accounts?fields=id,name", account.AccessToken, ct);
             var r = Root(pages);
             if (r?.TryGetProperty("data", out var arr) == true && arr.ValueKind == System.Text.Json.JsonValueKind.Array)
                 foreach (var p in arr.EnumerateArray())
-                    if (p.TryGetProperty("id", out var pv) && !string.IsNullOrEmpty(pv.GetString()))
-                    { if (string.IsNullOrEmpty(pageId)) pageId = pv.GetString(); break; }
+                    if (p.TryGetProperty("id", out var pv) && !string.IsNullOrWhiteSpace(pv.GetString()))
+                    {
+                        if (string.IsNullOrEmpty(pageId)) pageId = pv.GetString();
+                        if (p.TryGetProperty("name", out var pn)) pageName = pn.GetString();
+                        break;
+                    }
         }
         catch (Exception ex)
         {
-            Logger.LogWarning(ex, "Could not resolve Facebook pages (validate still OK).");
+            throw new InvalidOperationException($"Token looks valid but the managed pages could not be listed ({ex.Message}). Grant pages_show_list + pages_manage_posts.");
         }
 
-        account.ProfileJson = JsonOf(new { fb_user_id = userId, page_id = pageId });
+        if (string.IsNullOrWhiteSpace(pageId))
+            throw new InvalidOperationException("Token is valid but this Facebook user manages no pages. Manage a page and re-check the token scopes (pages_manage_posts).");
+
+        account.ProfileJson = JsonOf(new { fb_user_id = userId, page_id = pageId, page_name = pageName });
         account.LastVerifiedAt = DateTime.UtcNow;
     }
 

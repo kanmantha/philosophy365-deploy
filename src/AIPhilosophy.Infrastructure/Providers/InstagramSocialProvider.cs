@@ -27,23 +27,31 @@ public class InstagramSocialProvider : RealSocialProviderBase, ISocialProvider
         var me = await ValidateBearerTokenAsync(account.AccessToken, $"https://graph.facebook.com/{_ver}/me?fields=id,name", ct);
 
         string? igUserId = null;
+        string? igUsername = null;
         try
         {
             var pages = await BearerGetAsync($"https://graph.facebook.com/{_ver}/me/accounts?fields=instagram_business_account%7Bid,username%7D", account.AccessToken, ct);
             var r = Root(pages);
             if (r?.TryGetProperty("data", out var arr) == true && arr.ValueKind == System.Text.Json.JsonValueKind.Array)
                 foreach (var p in arr.EnumerateArray())
-                    if (p.TryGetProperty("instagram_business_account", out var ig) && ig.TryGetProperty("id", out var iid))
-                    { igUserId = iid.GetString(); break; }
+                    if (p.TryGetProperty("instagram_business_account", out var ig) && ig.TryGetProperty("id", out var iid) && !string.IsNullOrWhiteSpace(iid.GetString()))
+                    {
+                        igUserId = iid.GetString();
+                        if (ig.TryGetProperty("username", out var iu)) igUsername = iu.GetString();
+                        break;
+                    }
         }
         catch (Exception ex)
         {
-            Logger.LogWarning(ex, "Could not resolve Instagram business account id (validate still OK).");
+            throw new InvalidOperationException($"Token looks valid but the linked accounts could not be listed ({ex.Message}). Grant pages_show_list + instagram_business_content_publish.");
         }
+
+        if (string.IsNullOrWhiteSpace(igUserId))
+            throw new InvalidOperationException("Token is valid but no Instagram Business account is linked to this Facebook user. Link a business account and re-check the token scopes (instagram_business_content_publish).");
 
         var meR = Root(me);
         var userId = meR?.TryGetProperty("id", out var uid) == true ? uid.GetString() : null;
-        account.ProfileJson = JsonOf(new { fb_user_id = userId, ig_user_id = igUserId });
+        account.ProfileJson = JsonOf(new { fb_user_id = userId, ig_user_id = igUserId, ig_username = igUsername });
         account.LastVerifiedAt = DateTime.UtcNow;
     }
 

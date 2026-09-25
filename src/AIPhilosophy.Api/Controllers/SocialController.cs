@@ -63,13 +63,46 @@ a.Id,
         return Ok(ApiResponse<object>.Ok(accounts));
     }
 
-    [HttpPost("accounts")]
+[HttpPost("accounts")]
     public async Task<IActionResult> AddAccount([FromBody] RequestModels.SocialAccountRequest req)
     {
         if (!Enum.TryParse<SocialPlatform>(req.Platform, true, out var platform) || platform == SocialPlatform.None)
             return BadRequest(ApiResponse<object>.Fail($"Unknown platform '{req.Platform}'."));
+        if (string.IsNullOrWhiteSpace(req.AccountName))
+            return BadRequest(ApiResponse<object>.Fail("Account name is required."));
+        if (string.IsNullOrWhiteSpace(req.AccountHandle))
+            return BadRequest(ApiResponse<object>.Fail("Handle / channel id is required."));
 
         var tenantId = await this.GetTenantIdAsync(db);
+        var provider = registry.GetSocialProvider(platform);
+
+        var account = new SocialAccount
+        {
+            TenantId = tenantId,
+            Platform = platform,
+            AccountName = req.AccountName.Trim(),
+            AccountHandle = req.AccountHandle.Trim(),
+            AccessToken = req.AccessToken,
+            RefreshToken = req.RefreshToken,
+            TokenSecret = req.TokenSecret,
+            IsDefaultForPlatform = req.IsDefaultForPlatform,
+            Status = SocialAccountStatus.Active
+        };
+
+        // Prove the credentials are really valid before persisting an "Active" account.
+        if (provider != null && !string.IsNullOrWhiteSpace(req.AccessToken))
+        {
+            try
+            {
+                await provider.ValidateAccountAsync(account, HttpContext.RequestAborted);
+                account.Status = SocialAccountStatus.Active;
+                account.LastVerifiedAt = DateTime.UtcNow;
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ApiResponse<object>.Fail($"Credentials could not be verified: {ex.Message}"));
+            }
+        }
 
         if (req.IsDefaultForPlatform)
         {
@@ -77,23 +110,15 @@ a.Id,
             foreach (var e in existing) e.IsDefaultForPlatform = false;
         }
 
-        var account = new SocialAccount
-        {
-            TenantId = tenantId,
-            Platform = platform,
-            AccountName = req.AccountName,
-            AccountHandle = req.AccountHandle,
-            AccessToken = req.AccessToken,
-            RefreshToken = req.RefreshToken,
-            IsDefaultForPlatform = req.IsDefaultForPlatform,
-            Status = SocialAccountStatus.Active,
-            LastVerifiedAt = DateTime.UtcNow
-        };
-
         db.SocialAccounts.Add(account);
         await db.SaveChangesAsync();
 
-        return Ok(ApiResponse<object>.Ok(new { account.Id, account.Platform, account.AccountHandle }, "Account linked. In demo mode posting is simulated."));
+        var verified = account.LastVerifiedAt is not null;
+        return Ok(ApiResponse<object>.Ok(
+            new { account.Id, account.Platform, account.AccountHandle, verified },
+            verified
+                ? "Account linked and credentials verified with the platform."
+                : "Account linked but no token was supplied, so it was not verified against the platform."));
     }
 
     [HttpDelete("accounts/{id:guid}")]
@@ -118,15 +143,10 @@ a.Id,
 try
         {
             var provider = registry.GetSocialProvider(account.Platform);
-            if (provider != null)
-            {
-                await provider.ValidateAccountAsync(account, HttpContext.RequestAborted);
-                account.LastVerifiedAt = DateTime.UtcNow;
-                account.Status = SocialAccountStatus.Active;
-                await db.SaveChangesAsync();
-                return Ok(ApiResponse<object>.Ok(new { account.Id, verified = true }));
-            }
+            if (provider == null)
+                return BadRequest(ApiResponse<object>.Fail("No provider is registered for this platform."));
 
+            await provider.ValidateAccountAsync(account, HttpContext.RequestAborted);
             account.LastVerifiedAt = DateTime.UtcNow;
             account.Status = SocialAccountStatus.Active;
             await db.SaveChangesAsync();

@@ -3,7 +3,7 @@
 
 <div class="page-heading">
     <h1>Connect Social Accounts</h1>
-    <p>Link your platform handles. The daily pipeline auto-posts each video to the default account of every platform marked <strong>real</strong>.</p>
+    <p>Link your platform handles. When you add an account with a token, the API checks the credentials against the actual platform before saving it, so only working logins are marked verified. The daily pipeline auto-posts each video to the default account of every platform marked <strong>real</strong>.</p>
 </div>
 
 @if (busy)
@@ -55,6 +55,7 @@ else
                 <th>Account</th>
                 <th>Handle</th>
                 <th>Default</th>
+                <th>Token</th>
                 <th>Status</th>
                 <th>Last verified</th>
                 <th></th>
@@ -68,9 +69,30 @@ else
                     <td>@a.accountName</td>
                     <td>@@@a.accountHandle</td>
                     <td>@(a.isDefaultForPlatform ? "Yes" : "No")</td>
-                    <td><span class="badge bg-@(a.status == "Active" ? "success" : "danger")">@a.status</span></td>
+                    <td>@(a.hasToken ? "Yes" : "No")</td>
+                    <td>
+                        @if (a.status == "Active" && a.hasToken)
+                        {
+                            <span class="badge bg-success">Verified</span>
+                        }
+                        else if (a.status == "Active" && !a.hasToken)
+                        {
+                            <span class="badge bg-warning text-dark">No token</span>
+                        }
+                        else if (a.status == "Error")
+                        {
+                            <span class="badge bg-danger">Error</span>
+                        }
+                        else
+                        {
+                            <span class="badge bg-secondary">@a.status</span>
+                        }
+                    </td>
                     <td class="small text-muted">@a.lastVerifiedAt?.ToString("g")</td>
-                    <td><button class="btn btn-sm btn-outline-danger" @onclick="() => Remove(a.id)">Remove</button></td>
+                    <td class="text-nowrap">
+                        <button class="btn btn-sm btn-outline-secondary me-1" @onclick="() => Verify(a.id)" disabled="@(verifyingId.HasValue || linking)">@(verifyingId == a.id ? "Verifying..." : "Verify")</button>
+                        <button class="btn btn-sm btn-outline-danger" @onclick="() => Remove(a.id)" disabled="@(verifyingId.HasValue || linking)">Remove</button>
+                    </td>
                 </tr>
             }
         </tbody>
@@ -93,12 +115,25 @@ else
             </div>
             <div class="col-md-3"><input class="form-control" @bind="accountName" placeholder="Account name" /></div>
             <div class="col-md-3"><input class="form-control" @bind="accountHandle" placeholder="Handle / channel id" /></div>
-            <div class="col-md-2"><input class="form-control" @bind="accessToken" type="password" placeholder="Token (optional)" /></div>
+            <div class="col-md-2"><input class="form-control" @bind="accessToken" type="password" placeholder="@(newPlatform == "XTwitter" ? "Token" : "Token (optional)")" /></div>
             <div class="col-md-2 d-flex gap-2 align-items-center">
                 <label class="small text-muted"><input type="checkbox" class="me-1" @bind="isDefault" />Default</label>
-                <button class="btn btn-primary" @onclick="Add">Link</button>
+                <button class="btn btn-primary" @onclick="Add" disabled="@linking">@(linking ? "Verifying..." : "Link")</button>
             </div>
         </div>
+        @if (newPlatform == "XTwitter")
+        {
+            <div class="row g-2 mt-1">
+                <div class="col-md-6">
+                    <label class="form-label small text-muted">X / Twitter OAuth1 token secret (required for X)</label>
+                    <input class="form-control" @bind="tokenSecret" type="password" placeholder="OAuth1 token secret" />
+                </div>
+            </div>
+        }
+        @if (linking)
+        {
+            <div class="alert alert-info mt-3 mb-0"><span class="spinner-border spinner-border-sm me-2"></span>Checking credentials with the platform…</div>
+        }
         @if (!string.IsNullOrEmpty(Message))
         {
             <div class="alert @(messageError ? "alert-danger" : "alert-success") mt-3 mb-0">@Message</div>
@@ -110,10 +145,13 @@ else
     private List<PlatformDto> platforms = new();
     private List<SocialAccountDto> accounts = new();
     private bool busy = true;
+    private bool linking;
+    private Guid? verifyingId;
     private string newPlatform = "YouTubeShorts";
     private string accountName = string.Empty;
     private string accountHandle = string.Empty;
     private string accessToken = string.Empty;
+    private string tokenSecret = string.Empty;
     private bool isDefault = true;
     private string Message = string.Empty;
     private bool messageError;
@@ -155,19 +193,62 @@ else
 
     private async Task Add()
     {
+        if (string.IsNullOrWhiteSpace(accountName) || string.IsNullOrWhiteSpace(accountHandle))
+        {
+            messageError = true;
+            Message = "Account name and handle / channel id are required.";
+            return;
+        }
         Message = string.Empty;
+        linking = true;
         try
         {
             var res = await Api.PostEnvelopeAsync<object>("api/social/accounts",
-                new { platform = newPlatform, accountName, accountHandle, accessToken = string.IsNullOrEmpty(accessToken) ? null : accessToken, refreshToken = (string?)null, isDefaultForPlatform = isDefault });
+                new
+                {
+                    platform = newPlatform,
+                    accountName,
+                    accountHandle,
+                    accessToken = string.IsNullOrEmpty(accessToken) ? null : accessToken,
+                    refreshToken = (string?)null,
+                    tokenSecret = string.IsNullOrEmpty(tokenSecret) ? null : tokenSecret,
+                    isDefaultForPlatform = isDefault
+                });
             messageError = res is not { Success: true };
-            Message = res?.Message ?? "Added.";
-            accountName = accountHandle = accessToken = string.Empty;
+            Message = res?.Message ?? (messageError ? "Could not link the account." : "Added.");
+            if (res is { Success: true })
+                accountName = accountHandle = accessToken = tokenSecret = string.Empty;
         }
         catch (Exception ex)
         {
             messageError = true;
             Message = ex.Message;
+        }
+        finally
+        {
+            linking = false;
+        }
+        await LoadAsync();
+    }
+
+    private async Task Verify(Guid id)
+    {
+        verifyingId = id;
+        Message = string.Empty;
+        try
+        {
+            var res = await Api.PostEnvelopeAsync<object>($"api/social/accounts/{id}/validate");
+            messageError = res is not { Success: true };
+            Message = res?.Message ?? (messageError ? "Verification failed." : "Re-verified.");
+        }
+        catch (Exception ex)
+        {
+            messageError = true;
+            Message = ex.Message;
+        }
+        finally
+        {
+            verifyingId = null;
         }
         await LoadAsync();
     }
@@ -177,7 +258,9 @@ else
         Message = string.Empty;
         try
         {
-            await Api.DeleteEnvelopeAsync<object>($"api/social/accounts/{id}");
+            var res = await Api.DeleteEnvelopeAsync<object>($"api/social/accounts/{id}");
+            messageError = res is not { Success: true };
+            Message = res?.Message ?? "Removed.";
         }
         catch (Exception ex)
         {

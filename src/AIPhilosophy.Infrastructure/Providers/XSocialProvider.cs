@@ -17,8 +17,27 @@ public class XSocialProvider : RealSocialProviderBase, ISocialProvider
 
     public SocialPlatform Platform => SocialPlatform.XTwitter;
 
-    public Task ValidateAccountAsync(SocialAccount account, CancellationToken ct)
-        => ValidateBearerTokenAsync(account.AccessToken, "https://api.x.com/2/users/me", ct);
+    public async Task ValidateAccountAsync(SocialAccount account, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(account.AccessToken))
+            throw new InvalidOperationException("No token on the linked account. X requires an OAuth1 user token AND token secret.");
+        if (string.IsNullOrWhiteSpace(account.TokenSecret))
+            throw new InvalidOperationException("X also needs the OAuth1 token secret. Provide it in the token secret field when linking the account.");
+        if (string.IsNullOrWhiteSpace(Get("ApiKey")) || string.IsNullOrWhiteSpace(Get("ApiSecret")))
+            throw new InvalidOperationException("Set Social:XTwitter:ApiKey / ApiSecret in config so the token can be verified.");
+
+        var body = await SendOAuth1Async(HttpMethod.Get, "https://api.x.com/2/users/me", null, account, Get("ApiKey")!, Get("ApiSecret")!, ct);
+        var r = Root(body);
+        string? username = null;
+        string? name = null;
+        if (r?.TryGetProperty("data", out var d) == true)
+        {
+            if (d.TryGetProperty("username", out var u)) username = u.GetString();
+            if (d.TryGetProperty("name", out var n)) name = n.GetString();
+        }
+        account.ProfileJson = JsonOf(new { username, name, auth = "oauth1" });
+        account.LastVerifiedAt = DateTime.UtcNow;
+    }
 
     public async Task<PostResult> PostVideoAsync(PostRequest request, SocialAccount account, CancellationToken ct)
     {
@@ -126,13 +145,14 @@ public class XSocialProvider : RealSocialProviderBase, ISocialProvider
         throw new InvalidOperationException("Timed out waiting for X media processing.");
     }
 
-    private async Task<string> SendOAuth1Async(HttpMethod method, string url, HttpContent content, SocialAccount account, string apiKey, string apiSecret, CancellationToken ct)
+    private async Task<string> SendOAuth1Async(HttpMethod method, string url, HttpContent? content, SocialAccount account, string apiKey, string apiSecret, CancellationToken ct)
     {
         var oauth = SignOAuth1(method.ToString(), url,
             ParseForm(content),
             apiKey, apiSecret, account.AccessToken ?? string.Empty, account.TokenSecret ?? string.Empty);
 
-        using var req = new HttpRequestMessage(method, url) { Content = content };
+        using var req = new HttpRequestMessage(method, url);
+        if (content != null) req.Content = content;
         req.Headers.TryAddWithoutValidation("Authorization", oauth);
         using var resp = await Http.SendAsync(req, ct);
         var body = await resp.Content.ReadAsStringAsync(ct);
@@ -141,7 +161,7 @@ public class XSocialProvider : RealSocialProviderBase, ISocialProvider
         return body;
     }
 
-    private static Dictionary<string, string> ParseForm(HttpContent content)
+    private static Dictionary<string, string> ParseForm(HttpContent? content)
     {
         var dict = new Dictionary<string, string>();
         if (content is FormUrlEncodedContent form)

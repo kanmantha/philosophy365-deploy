@@ -17,11 +17,42 @@ public class YouTubeSocialProvider : RealSocialProviderBase, ISocialProvider
 
     public SocialPlatform Platform => SocialPlatform.YouTubeShorts;
 
-    public Task ValidateAccountAsync(SocialAccount account, CancellationToken ct)
+    public async Task ValidateAccountAsync(SocialAccount account, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(account.AccessToken))
             throw new InvalidOperationException("No token on the linked account. Link the account with a real Google OAuth token (scope youtube.upload).");
-        return ValidateBearerTokenAsync(account.AccessToken, "https://www.googleapis.com/youtube/v3/channels?part=snippet&mine=true", ct);
+
+        var body = await ValidateBearerTokenAsync(account.AccessToken, "https://www.googleapis.com/youtube/v3/channels?part=snippet&mine=true", ct);
+        var r = Root(body);
+
+        string? channelId = null;
+        string? title = null;
+        string? handle = null;
+        if (r?.TryGetProperty("items", out var items) == true && items.ValueKind == System.Text.Json.JsonValueKind.Array)
+        {
+            foreach (var item in items.EnumerateArray())
+            {
+                if (item.TryGetProperty("id", out var cid) && !string.IsNullOrWhiteSpace(cid.GetString()))
+                {
+                    channelId = cid.GetString();
+                    if (item.TryGetProperty("snippet", out var snippet))
+                    {
+                        if (snippet.TryGetProperty("title", out var t)) title = t.GetString();
+                        if (snippet.TryGetProperty("customUrl", out var cu)) handle = cu.GetString();
+                    }
+                    break;
+                }
+            }
+        }
+
+        if (string.IsNullOrWhiteSpace(channelId))
+        {
+            account.ProfileJson = null;
+            throw new InvalidOperationException("Token is valid but no uploadable channel was returned. Make sure the token has the youtube.upload scope and is linked to a channel.");
+        }
+
+        account.ProfileJson = JsonOf(new { channel_id = channelId, title, handle, scope = "youtube.upload" });
+        account.LastVerifiedAt = DateTime.UtcNow;
     }
 
     public async Task<PostResult> PostVideoAsync(PostRequest request, SocialAccount account, CancellationToken ct)

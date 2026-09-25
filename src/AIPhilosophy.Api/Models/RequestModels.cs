@@ -59,6 +59,7 @@ public static class RequestModels
         string AccountHandle,
         string? AccessToken,
         string? RefreshToken,
+        string? TokenSecret,
         bool IsDefaultForPlatform);
 
     public record ScheduleRuleRequest(

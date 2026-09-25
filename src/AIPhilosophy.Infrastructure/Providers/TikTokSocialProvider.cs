@@ -16,8 +16,31 @@ public class TikTokSocialProvider : RealSocialProviderBase, ISocialProvider
 
     public SocialPlatform Platform => SocialPlatform.TikTok;
 
-    public Task ValidateAccountAsync(SocialAccount account, CancellationToken ct)
-        => ValidateBearerTokenAsync(account.AccessToken, "https://open.tiktokapis.com/v2/user/info/?fields=open_id,display_name,avatar_url", ct);
+    public async Task ValidateAccountAsync(SocialAccount account, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(account.AccessToken))
+            throw new InvalidOperationException("No token on the linked account. Link the account with a real TikTok token (scope video.publish).");
+
+        var body = await ValidateBearerTokenAsync(account.AccessToken, "https://open.tiktokapis.com/v2/user/info/?fields=open_id,display_name,avatar_url", ct);
+        var r = Root(body);
+
+        string? openId = null;
+        string? displayName = null;
+        if (r?.TryGetProperty("data", out var data) == true && data.TryGetProperty("user", out var user))
+        {
+            if (user.TryGetProperty("open_id", out var oi)) openId = oi.GetString();
+            if (user.TryGetProperty("display_name", out var dn)) displayName = dn.GetString();
+        }
+
+        if (string.IsNullOrWhiteSpace(openId))
+        {
+            account.ProfileJson = null;
+            throw new InvalidOperationException("Token is valid but no user profile was returned. Make sure the token has the video.publish scope.");
+        }
+
+        account.ProfileJson = JsonOf(new { open_id = openId, display_name = displayName, scope = "video.publish" });
+        account.LastVerifiedAt = DateTime.UtcNow;
+    }
 
     public async Task<PostResult> PostVideoAsync(PostRequest request, SocialAccount account, CancellationToken ct)
     {
