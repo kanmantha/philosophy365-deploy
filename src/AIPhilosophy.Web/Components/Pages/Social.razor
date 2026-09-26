@@ -129,7 +129,7 @@ else
                 </select>
             </div>
             <div class="col-md-3"><input class="form-control" @bind="accountName" placeholder="Account name" /></div>
-            <div class="col-md-3"><input class="form-control" @bind="accountHandle" placeholder="Handle / channel id" /></div>
+            <div class="col-md-3"><input class="form-control" @bind="accountHandle" placeholder="Handle / channel id (optional)" /></div>
             <div class="col-md-2"><input class="form-control" @bind="accessToken" type="password" placeholder="@(newPlatform == "XTwitter" ? "Token" : "Token (optional)")" /></div>
             <div class="col-md-2 d-flex gap-2 align-items-center">
                 <label class="small text-muted"><input type="checkbox" class="me-1" @bind="isDefault" />Default</label>
@@ -262,10 +262,10 @@ else
 
     private async Task Add()
     {
-        if (string.IsNullOrWhiteSpace(accountName) || string.IsNullOrWhiteSpace(accountHandle))
+        if (string.IsNullOrWhiteSpace(accountName))
         {
             messageError = true;
-            Message = "Account name and handle / channel id are required.";
+            Message = "Account name is required.";
             return;
         }
         Message = string.Empty;

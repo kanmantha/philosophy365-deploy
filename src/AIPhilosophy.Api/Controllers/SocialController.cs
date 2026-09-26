@@ -70,8 +70,6 @@ a.Id,
             return BadRequest(ApiResponse<object>.Fail($"Unknown platform '{req.Platform}'."));
         if (string.IsNullOrWhiteSpace(req.AccountName))
             return BadRequest(ApiResponse<object>.Fail("Account name is required."));
-        if (string.IsNullOrWhiteSpace(req.AccountHandle))
-            return BadRequest(ApiResponse<object>.Fail("Handle / channel id is required."));
 
         var tenantId = await this.GetTenantIdAsync(db);
         var provider = registry.GetSocialProvider(platform);
