@@ -23,11 +23,16 @@ public class ProviderRegistry
 {
     private readonly IEnumerable<IVideoProvider> _videoProviders;
     private readonly IEnumerable<ISocialProvider> _socialProviders;
+    private readonly IEnumerable<ISocialOAuth> _socialOAuths;
 
-    public ProviderRegistry(IEnumerable<IVideoProvider> videoProviders, IEnumerable<ISocialProvider> socialProviders)
+    public ProviderRegistry(
+        IEnumerable<IVideoProvider> videoProviders,
+        IEnumerable<ISocialProvider> socialProviders,
+        IEnumerable<ISocialOAuth>? socialOAuths = null)
     {
         _videoProviders = videoProviders;
         _socialProviders = socialProviders;
+        _socialOAuths = socialOAuths ?? Array.Empty<ISocialOAuth>();
     }
 
     public IVideoProvider? GetVideoProvider(GenerationProvider provider)
@@ -38,4 +43,7 @@ public class ProviderRegistry
 
     public ISocialProvider? GetSocialProvider(SocialPlatform platform)
         => _socialProviders.FirstOrDefault(p => p.Platform == platform);
+
+    public ISocialOAuth? GetSocialOAuth(SocialPlatform platform)
+        => _socialOAuths.FirstOrDefault(p => p.Platform == platform);
 }

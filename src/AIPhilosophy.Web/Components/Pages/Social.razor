@@ -1,5 +1,6 @@
 @page "/social"
 @inject ApiClient Api
+@inject NavigationManager Nav
 
 <div class="page-heading">
     <h1>Connect Social Accounts</h1>
@@ -40,6 +41,20 @@
         <span class="badge p-2 @cls">@p.name — @note</span>
     }
 </div>
+
+@if (oauthAvailable.Count > 0)
+{
+    <div class="card mb-4">
+        <div class="card-body d-flex flex-wrap gap-2 align-items-center">
+            <span class="fw-semibold me-1">One-click sign-in</span>
+            @foreach (var p in oauthAvailable)
+            {
+                <button class="btn btn-sm btn-outline-primary" @onclick="() => StartOAuth(p.platform)" disabled="@startingOAuth">Continue with @p.name</button>
+            }
+            <span class="small text-muted">Opens the platform's own login page; the link is verified automatically.</span>
+        </div>
+    </div>
+}
 
 <h2 class="h5">Linked accounts</h2>
 @if (accounts.Count == 0)
@@ -144,8 +159,10 @@ else
 @code {
     private List<PlatformDto> platforms = new();
     private List<SocialAccountDto> accounts = new();
+    private List<PlatformDto> oauthAvailable = new();
     private bool busy = true;
     private bool linking;
+    private bool startingOAuth;
     private Guid? verifyingId;
     private string newPlatform = "YouTubeShorts";
     private string accountName = string.Empty;
@@ -159,6 +176,7 @@ else
 
     protected override async Task OnInitializedAsync()
     {
+        await ApplyOAuthResultAsync();
         try
         {
             await Api.InitializeAsync();
@@ -168,6 +186,30 @@ else
             loadError = ex.Message;
         }
         await LoadAsync();
+    }
+
+    private async Task ApplyOAuthResultAsync()
+    {
+        var uri = Nav.Uri;
+        var idx = uri.IndexOf("?oauth=", StringComparison.OrdinalIgnoreCase);
+        if (idx < 0) return;
+        var decoded = Uri.UnescapeDataString(uri[(idx + 7)..]);
+        var sep = decoded.IndexOf(':');
+        var platform = sep > 0 ? decoded[..sep] : decoded;
+        var rest = sep > 0 ? decoded[(sep + 1)..] : string.Empty;
+
+        if (rest.StartsWith("ok", StringComparison.OrdinalIgnoreCase))
+        {
+            messageError = false;
+            Message = $"{platform} linked successfully and verified with the platform.";
+        }
+        else
+        {
+            var detail = rest.StartsWith("error", StringComparison.OrdinalIgnoreCase) ? rest["error".Length..].TrimStart(':', ' ') : string.Empty;
+            messageError = true;
+            Message = string.IsNullOrWhiteSpace(detail) ? $"Could not link {platform}." : $"Could not link {platform}: {detail}";
+        }
+        Nav.NavigateTo("/social");
     }
 
     private async Task LoadAsync()
@@ -180,6 +222,7 @@ else
             platforms = p?.Data ?? new();
             var a = await Api.GetAsync<ApiEnvelope<List<SocialAccountDto>>>("api/social/accounts");
             accounts = a?.Data ?? new();
+            oauthAvailable = platforms.Where(x => x.mode == "real" && x.isConfigured && !x.hasLinkedToken).ToList();
         }
         catch (Exception ex)
         {
@@ -188,6 +231,32 @@ else
         finally
         {
             busy = false;
+        }
+    }
+
+    private async Task StartOAuth(string platform)
+    {
+        Message = string.Empty;
+        startingOAuth = true;
+        try
+        {
+            var res = await Api.PostEnvelopeAsync<OAuthStartDto>("api/social/oauth/start", new { platform });
+            if (res is { Success: true } && !string.IsNullOrEmpty(res.Data?.authorizeUrl))
+            {
+                Nav.NavigateTo(res.Data.authorizeUrl, forceLoad: true);
+                return;
+            }
+            messageError = true;
+            Message = res?.Message ?? "Could not start the sign-in.";
+        }
+        catch (Exception ex)
+        {
+            messageError = true;
+            Message = ex.Message;
+        }
+        finally
+        {
+            startingOAuth = false;
         }
     }
 

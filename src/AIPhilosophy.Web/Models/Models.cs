@@ -26,6 +26,8 @@ public record PlatformDto(
     string platform, string name, bool isMock, bool isConfigured,
     bool requiresSetup, bool hasLinkedToken, bool simulated, string mode);
 
+public record OAuthStartDto(string authorizeUrl);
+
 public record ScheduleRuleDto(
     Guid id, string name, bool isEnabled, int generationHourUTC, int postHourUTC,
     string postingDaysCsv, string postingTimesCsv, string targetPlatformsCsv, string timeZoneId, string generationCron)

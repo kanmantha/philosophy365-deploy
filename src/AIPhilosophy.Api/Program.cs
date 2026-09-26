@@ -121,6 +121,11 @@ builder.Services.AddSingleton<ISocialProvider, InstagramSocialProvider>();
 builder.Services.AddSingleton<ISocialProvider, XSocialProvider>();
 builder.Services.AddSingleton<ISocialProvider, LinkedInSocialProvider>();
 builder.Services.AddSingleton<ISocialProvider, FacebookSocialProvider>();
+builder.Services.AddSingleton<ISocialOAuth, GoogleSocialOAuth>();
+builder.Services.AddSingleton<ISocialOAuth, InstagramSocialOAuth>();
+builder.Services.AddSingleton<ISocialOAuth, FacebookSocialOAuth>();
+builder.Services.AddSingleton<ISocialOAuth, TikTokSocialOAuth>();
+builder.Services.AddSingleton<ISocialOAuth, LinkedInSocialOAuth>();
 builder.Services.AddSingleton<ProviderRegistry>();
 
 var app = builder.Build();

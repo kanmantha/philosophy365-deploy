@@ -62,6 +62,8 @@ public static class RequestModels
         string? TokenSecret,
         bool IsDefaultForPlatform);
 
+    public record OAuthStartRequest(string Platform);
+
     public record ScheduleRuleRequest(
         string Name,
         int GenerationHourUTC,
