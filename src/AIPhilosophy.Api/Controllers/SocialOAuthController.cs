@@ -126,7 +126,7 @@ public class SocialOAuthController(AppDbContext db, ProviderRegistry registry, I
     }
 
     private string? RedirectUriFor(SocialPlatform platform)
-        => config[$"Social:{platform}:RedirectUri"] ?? config["Social:OAuth:RedirectUri"];
+        => config["Social:OAuth:RedirectUri"] ?? config[$"Social:{platform}:RedirectUri"];
 
     private static string NewState()
     {
