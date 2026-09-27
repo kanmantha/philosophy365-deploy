@@ -117,8 +117,9 @@ else
 <h2 class="h5 mt-4">Add account</h2>
 <div class="card">
     <div class="card-body">
-        <div class="row g-2">
-            <div class="col-md-2">
+        <div class="row g-2 align-items-end">
+            <div class="col-md-3">
+                <label class="form-label small text-muted mb-1">Platform</label>
                 <select class="form-select" @bind="newPlatform">
                     <option value="YouTubeShorts">YouTube Shorts</option>
                     <option value="TikTok">TikTok</option>
@@ -128,23 +129,37 @@ else
                     <option value="FacebookReels">Facebook Reels</option>
                 </select>
             </div>
-            <div class="col-md-3"><input class="form-control" @bind="accountName" placeholder="Account name" /></div>
-            <div class="col-md-3"><input class="form-control" @bind="accountHandle" placeholder="Handle / channel id (optional)" /></div>
-            <div class="col-md-2"><input class="form-control" @bind="accessToken" type="password" placeholder="@(newPlatform == "XTwitter" ? "Token" : "Token (optional)")" /></div>
-            <div class="col-md-2 d-flex gap-2 align-items-center">
+            <div class="col-md-3">
+                <label class="form-label small text-muted mb-1">Account name</label>
+                <input class="form-control" @bind="accountName" placeholder="e.g. My Instagram" />
+            </div>
+            <div class="col-md-3">
+                <label class="form-label small text-muted mb-1">Handle / channel id (optional)</label>
+                <input class="form-control" @bind="accountHandle" placeholder="e.g. vinodkanmantha" />
+            </div>
+            <div class="col-md-3 d-flex gap-2 align-items-center justify-content-end">
                 <label class="small text-muted"><input type="checkbox" class="me-1" @bind="isDefault" />Default</label>
                 <button class="btn btn-primary" @onclick="Add" disabled="@linking">@(linking ? "Verifying..." : "Link")</button>
             </div>
         </div>
         @if (newPlatform == "XTwitter")
         {
-            <div class="row g-2 mt-1">
+            <div class="row g-2 mt-2">
                 <div class="col-md-6">
                     <label class="form-label small text-muted">X / Twitter OAuth1 token secret (required for X)</label>
                     <input class="form-control" @bind="tokenSecret" type="password" placeholder="OAuth1 token secret" />
                 </div>
             </div>
         }
+        <div class="row g-2 mt-2">
+            <div class="col-md-8">
+                <label class="form-label small text-muted mb-1">@(newPlatform == "XTwitter" ? "X / Twitter OAuth1 user token" : "Token / access token (optional)")</label>
+                <input class="form-control" @bind="accessToken" type="password" placeholder="@(newPlatform == "XTwitter" ? "OAuth1 user token" : "Paste the platform access token here, e.g. from the Graph API Explorer")" />
+            </div>
+            <div class="col-md-4 d-flex align-items-end">
+                <div class="small text-muted">Leave empty for demo/no-verify. Tokens are checked live against the platform.</div>
+            </div>
+        </div>
         @if (linking)
         {
             <div class="alert alert-info mt-3 mb-0"><span class="spinner-border spinner-border-sm me-2"></span>Checking credentials with the platform…</div>
